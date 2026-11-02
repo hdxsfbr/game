@@ -6,11 +6,13 @@ import type { PuzzleSpec } from './puzzles';
  */
 export interface Demo {
   notes?: number[];
+  /** Length of each note of the tune in beats (default 1 each), so a song keeps its rhythm. */
+  beats?: number[];
   chord?: number[];
   /** Several chords in a row, each a block. */
   chords?: number[][];
   cadence?: boolean;
-  /** Seconds between notes of a tune. Default 0.42. */
+  /** Seconds per beat of a tune, or between chords. Default 0.42. */
   gap?: number;
   timbre?: 'pipe' | 'bell' | 'pad' | 'bass' | 'horn';
 }
@@ -88,31 +90,31 @@ export const LESSONS: Record<string, LessonDef> = {
         heading: 'The octave',
         text: 'The same note, higher. Somewhere Over the Rainbow leaps an octave on its first two notes: "Some-where". The Bridge of Echoes asks for this one.',
         demoLabel: 'Over the Rainbow',
-        demo: { notes: [0, 12, 11, 7, 9, 11, 12], gap: 0.4 },
+        demo: { notes: [0, 12, 11, 7, 9, 11, 12], beats: [2, 2, 1, 0.5, 0.5, 1, 2], gap: 0.4 },
       },
       {
         heading: 'The fifth',
         text: 'Open and strong. Twinkle Twinkle: the first two different notes, "Twin-kle twin-kle", are a fifth apart. The Star Wars theme leaps the same distance. The Fifth Gate wants it.',
         demoLabel: 'Twinkle Twinkle',
-        demo: { notes: [0, 0, 7, 7, 9, 9, 7], gap: 0.36 },
+        demo: { notes: [0, 0, 7, 7, 9, 9, 7], beats: [1, 1, 1, 1, 1, 1, 2], gap: 0.4 },
       },
       {
         heading: 'The fourth',
         text: 'One step short of the fifth, and it sounds like an arrival. Here Comes the Bride rises a fourth on "Here comes". Amazing Grace opens with the same leap. The Fourth Gate wants it.',
         demoLabel: 'Here Comes the Bride',
-        demo: { notes: [0, 5, 5, 5], gap: 0.4 },
+        demo: { notes: [0, 5, 5, 5], beats: [1, 1.5, 0.5, 2], gap: 0.5 },
       },
       {
         heading: 'The major third',
         text: 'Bright. Oh When the Saints starts with a major third, "Oh when", and so does Kumbaya. The Bright Tree wants it.',
         demoLabel: 'When the Saints',
-        demo: { notes: [0, 4, 5, 7], gap: 0.36 },
+        demo: { notes: [0, 4, 5, 7], beats: [1, 1, 1, 3], gap: 0.36 },
       },
       {
         heading: 'The minor third',
         text: 'One step closer than the major third, and darker. Greensleeves opens with it, "A-las", and so does the riff from Smoke on the Water. The Shaded Tree wants it.',
         demoLabel: 'Greensleeves',
-        demo: { notes: [0, 3, 5, 7, 8, 7, 5], gap: 0.36 },
+        demo: { notes: [0, 3, 5, 7, 8, 7, 5], beats: [1, 2, 1, 1.5, 0.5, 1, 2], gap: 0.36 },
       },
       {
         heading: 'The drill',
@@ -150,13 +152,13 @@ export const LESSONS: Record<string, LessonDef> = {
         heading: 'Resting and leaning',
         text: 'Degrees 1, 3 and 5 sit still. The others lean: 7 leans up to 8, 4 leans down to 3, 2 leans down to 1. Hear each lean, then hear it settle.',
         demoLabel: '7 to 8, 4 to 3, 2 to 1',
-        demo: { notes: [11, 12, 5, 4, 2, 0], gap: 0.5 },
+        demo: { notes: [11, 12, 5, 4, 2, 0], beats: [1, 2.5, 1, 2.5, 1, 2.5], gap: 0.45 },
       },
       {
         heading: 'Songs that start there',
         text: 'Twinkle Twinkle starts on 1 and jumps to 5. Mary Had a Little Lamb starts on 3 and falls to 1. Happy Birthday starts on 5. When a door asks for a degree, think of a song that begins on it.',
         demoLabel: 'Mary Had a Little Lamb',
-        demo: { notes: [4, 2, 0, 2, 4, 4, 4], gap: 0.32 },
+        demo: { notes: [4, 2, 0, 2, 4, 4, 4], beats: [1, 1, 1, 1, 1, 1, 2], gap: 0.36 },
       },
       {
         heading: 'The drill',

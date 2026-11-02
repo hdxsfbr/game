@@ -398,7 +398,14 @@ export class WorldScene extends Phaser.Scene {
     const base = 60;
     let t = engine.now + 0.06;
     if (d.cadence) t = playCadence(base, { at: t, speed: 1 }) + 0.3;
-    if (d.notes) t = playSequence(d.notes.map((o) => base + o), { timbre: d.timbre ?? 'pipe', at: t, duration: Math.min(0.7, (d.gap ?? 0.42) * 0.9), gap: d.gap ?? 0.42, gain: 0.5 });
+    if (d.notes) {
+      const beat = d.gap ?? 0.42;
+      d.notes.forEach((o, i) => {
+        const len = (d.beats?.[i] ?? 1) * beat;
+        playNote(base + o, { timbre: d.timbre ?? 'pipe', at: t, duration: Math.min(1.4, len * 0.9), gain: 0.5 });
+        t += len;
+      });
+    }
     if (d.chord) t = playChord(d.chord.map((o) => base + o), { timbre: d.timbre ?? 'pad', at: t, duration: 1.4, gain: 0.8 });
     if (d.chords) {
       for (const c of d.chords) {
