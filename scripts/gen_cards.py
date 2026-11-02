@@ -20,7 +20,7 @@ STYLE = (
 NEGATIVE = 'text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, smooth gradients, frame, border'
 
 CARDS = {
-    'title': 'a small hooded traveller with a red scarf looks out over a silent grey kingdom at dusk, a distant hilltop town with one lit window, a valley with a river and bridges, moody and still',
+    'title': 'a small hooded traveller seen from behind looks out over a silent kingdom at dusk, everything desaturated and grey, muted stone and mist, a distant hilltop town with a single warm lit window, a valley with a river and bridges, moody and still',
     'hub': 'inside a quiet stone hearth hall, a big wooden door with a round ring, a warm lantern on a bench, an open songbook, cosy and dim',
     'valley': 'a green valley with wooden bridges over a bright river, stone gates set into cliffs, two round trees, morning light',
     'town': 'a terracotta hilltop town square with a bell tower, market stalls with awnings, a stone well, a clock tower, warm afternoon light',

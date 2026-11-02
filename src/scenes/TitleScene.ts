@@ -9,6 +9,8 @@ import { ensureTextures } from '../world/textures';
 import type { WorldData } from './WorldScene';
 
 const FONT = 'Georgia, "Times New Roman", serif';
+/** The title card is queued once; a restart while it is still loading must not queue it again. */
+let titleCardQueued = false;
 
 export class TitleScene extends Phaser.Scene {
   private note!: Phaser.GameObjects.Text;
@@ -24,7 +26,8 @@ export class TitleScene extends Phaser.Scene {
   }
 
   preload(): void {
-    if (!this.textures.exists('card-title')) {
+    if (!this.textures.exists('card-title') && !titleCardQueued) {
+      titleCardQueued = true;
       this.load.image('card-title', 'cards/title.png');
       this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
     }

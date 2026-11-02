@@ -19,6 +19,8 @@ import { PuzzlePanel } from '../ui/PuzzlePanel';
 import { MapOverlay } from '../ui/MapOverlay';
 
 const FONT = 'Georgia, "Times New Roman", serif';
+/** Card images queued for loading, so a restart mid-load does not queue one twice. */
+const cardsQueued = new Set<string>();
 
 interface TileView {
   img: Phaser.GameObjects.Image;
@@ -101,7 +103,8 @@ export class WorldScene extends Phaser.Scene {
     if (!this.textures.exists('player-sheet')) this.load.spritesheet('player-sheet', 'sprites/player/player.png', { frameWidth: 48, frameHeight: 48 });
     // The area's story card, shown on first arrival. Missing files are skipped quietly.
     const areaId = (this.scene.settings.data as WorldData | undefined)?.area ?? progress.area ?? 'hub';
-    if (!this.textures.exists(`card-${areaId}`) && !progress.cardsSeen.includes(areaId)) {
+    if (!this.textures.exists(`card-${areaId}`) && !progress.cardsSeen.includes(areaId) && !cardsQueued.has(areaId)) {
+      cardsQueued.add(areaId);
       this.load.image(`card-${areaId}`, `cards/${areaId}.png`);
       this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
     }

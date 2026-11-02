@@ -1,0 +1,10 @@
+[
+ {
+  "name": "title",
+  "prompt": "a small hooded traveller seen from behind looks out over a silent kingdom at dusk, everything desaturated and grey, muted stone and mist, a distant hilltop town with a single warm lit window, a valley with a river and bridges, moody and still, coherent crisp 16-bit pixel art, strong hard pixel clusters, no smooth antialiasing, limited palette, wide landscape game illustration, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, smooth gradients, frame, border",
+  "seed": 11,
+  "steps": 30,
+  "model": "stabilityai/stable-diffusion-xl-base-1.0"
+ }
+]
