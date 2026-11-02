@@ -10,6 +10,7 @@ import { VOICE_AFTER_QUIET, VOICE_DRILL_CAP, VOICE_MAX, progress, saveProgress }
 import { AREAS, type AreaDef, type DoorDef, type GateDef, type PracticeDef } from '../world/areas';
 import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
 import { LessonOverlay } from '../ui/LessonOverlay';
+import { StoryCard } from '../ui/StoryCard';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
 import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec, type Step } from '../world/puzzles';
@@ -71,6 +72,7 @@ export class WorldScene extends Phaser.Scene {
   private panel!: PuzzlePanel;
   private mapView!: MapOverlay;
   private lessonView!: LessonOverlay;
+  private storyCard!: StoryCard;
   private practice: { def: PracticeDef; img: Phaser.GameObjects.Image } | null = null;
   /** True while a bench drill runs: misses are free and right answers restore voice. */
   private drilling = false;
@@ -97,6 +99,12 @@ export class WorldScene extends Phaser.Scene {
   preload(): void {
     // The player: a PixelLab sheet, 48 px cells, row 0 the four facings, rows 1..4 six-frame walks (see scripts/pixellab_player.py).
     if (!this.textures.exists('player-sheet')) this.load.spritesheet('player-sheet', 'sprites/player/player.png', { frameWidth: 48, frameHeight: 48 });
+    // The area's story card, shown on first arrival. Missing files are skipped quietly.
+    const areaId = (this.scene.settings.data as WorldData | undefined)?.area ?? progress.area ?? 'hub';
+    if (!this.textures.exists(`card-${areaId}`) && !progress.cardsSeen.includes(areaId)) {
+      this.load.image(`card-${areaId}`, `cards/${areaId}.png`);
+      this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
+    }
   }
 
   /** Walk animations from the sheet, made once. */
@@ -158,12 +166,16 @@ export class WorldScene extends Phaser.Scene {
     this.lessonView.onHear = (page) => this.playDemo(page);
     this.lessonView.onDrill = () => this.startDrill();
     this.lessonView.onLeave = () => this.lessonView.hide();
+    this.storyCard = new StoryCard(this);
     this.buildHud();
 
     // Restore life for already-solved doors instantly.
     for (const d of this.doors) if (d.solved) this.blooms.push({ cx: d.def.tiles[0].x, cy: d.def.tiles[0].y, t0: -1e9, speed: 1e9, max: 14 });
     if (this.areaComplete() || progress.finished) this.blooms.push({ cx: 0, cy: 0, t0: -1e9, speed: 1e9, max: 1e9 });
     this.refreshGates();
+    if (!progress.cardsSeen.includes(this.area.id) && this.storyCard.show(this.area.id, this.area.name)) {
+      progress.cardsSeen.push(this.area.id);
+    }
     saveProgress(progress);
     MusicPlayer.get().play(this.area.id, progress.finished);
     MusicPlayer.get().setLife(this.areaLife());
@@ -478,6 +490,13 @@ export class WorldScene extends Phaser.Scene {
 
   private onKeyDown(ev: KeyboardEvent): void {
     if (ev.repeat) return;
+    if (this.storyCard.visible) {
+      if (ev.code === 'Space' || ev.code === 'Enter' || ev.code === 'Escape') {
+        ev.preventDefault();
+        this.storyCard.hide();
+      }
+      return;
+    }
     if (this.mapView.visible) {
       if (ev.code === 'KeyM' || ev.code === 'Escape' || ev.code === 'Space') this.mapView.hide();
       return;
@@ -936,7 +955,7 @@ export class WorldScene extends Phaser.Scene {
 
     // Movement.
     if (this.voiceFlashUntil > time - 200) this.drawVoice();
-    if (!this.runner && !this.transitioning && !this.mapView.visible && !this.lessonView.visible) {
+    if (!this.runner && !this.transitioning && !this.mapView.visible && !this.lessonView.visible && !this.storyCard.visible) {
       const speed = 150 * (delta / 1000);
       let dx = 0;
       let dy = 0;

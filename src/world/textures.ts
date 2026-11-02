@@ -60,14 +60,14 @@ export function ensureTextures(scene: Phaser.Scene): void {
   // ---------- wall pieces ----------
   // Face: a brick front with a dark footing, seen from the street.
   const brickFace = () => {
-    px(0, 0, 0xa8a8a8, TILE, TILE);
+    px(0, 0, 0xb4b4b4, TILE, TILE);
     for (let row = 0; row < 6; row++) {
       const y = row * 5 + 1;
       const off = row % 2 ? 6 : 0;
       for (let x = -6 + off; x < TILE; x += 12) {
-        px(x, y, 0xbdbdbd, 11, 4);
-        px(x, y, 0xcacaca, 11, 1); // top light
-        px(x + 10, y, 0xa0a0a0, 1, 4); // right shade
+        px(x, y, 0xc8c8c8, 11, 4);
+        px(x, y, 0xd6d6d6, 11, 1); // top light
+        px(x + 10, y, 0xa6a6a6, 1, 4); // right shade
       }
     }
     px(0, 0, 0x8c8c8c, TILE, 1); // under the eaves
@@ -78,22 +78,24 @@ export function ensureTextures(scene: Phaser.Scene): void {
   g.generateTexture('tile-wall-face', TILE, TILE);
   g.generateTexture('tile-wall', TILE, TILE);
 
-  // Top: shingles, scalloped rows.
+  // Top: a roof of scalloped shingles, darker than the brick face so a block reads as roof over wall.
   const shingles = (ridge: boolean) => {
-    px(0, 0, 0x7a7a7a, TILE, TILE);
-    for (let row = 0; row < 8; row++) {
-      const y = row * 4;
-      const off = row % 2 ? 4 : 0;
-      for (let x = -4 + off; x < TILE; x += 8) {
-        px(x, y, 0xb6b6b6, 7, 3);
-        px(x, y, 0xd0d0d0, 7, 1);
-        px(x + 7, y, 0x606060, 1, 3);
-        px(x, y + 3, 0x606060, 8, 1);
+    px(0, 0, 0x6a6a6a, TILE, TILE);
+    for (let row = 0; row < 6; row++) {
+      const y = row * 6 - 2;
+      const off = row % 2 ? 5 : 0;
+      for (let x = -5 + off; x < TILE; x += 10) {
+        px(x + 1, y, 0x9a9a9a, 8, 5);
+        px(x + 2, y + 5, 0x9a9a9a, 6, 1); // rounded bottom
+        px(x + 1, y, 0xb0b0b0, 8, 2);
+        px(x + 1, y + 5, 0x505050, 1, 1);
+        px(x + 8, y + 5, 0x505050, 1, 1);
+        px(x + 2, y + 6, 0x505050, 6, 1);
       }
     }
     if (ridge) {
-      px(0, 0, 0xf0f0f0, TILE, 2);
-      px(0, 2, 0x606060, TILE, 1);
+      px(0, 0, 0xd8d8d8, TILE, 3);
+      px(0, 3, 0x505050, TILE, 1);
     }
   };
   g.clear();
@@ -120,23 +122,24 @@ export function ensureTextures(scene: Phaser.Scene): void {
   // ---------- bridge: planks with rope rails ----------
   g.clear();
   px(0, 0, 0xb0b0b0, TILE, TILE);
+  px(0, 0, 0x6a6a6a, TILE, TILE);
   for (let y = 0; y < TILE; y += 6) {
-    px(1, y + 1, 0xd2d2d2, TILE - 2, 4);
-    px(1, y + 1, 0xdedede, TILE - 2, 1);
-    px(1, y + 5, 0x8e8e8e, TILE - 2, 1);
+    px(3, y + 1, 0xd2d2d2, TILE - 6, 4);
+    px(3, y + 1, 0xdedede, TILE - 6, 1);
+    px(3, y + 5, 0x4e4e4e, TILE - 6, 1); // gap between planks
   }
-  px(0, 0, 0x7a7a7a, 2, TILE);
-  px(TILE - 2, 0, 0x7a7a7a, 2, TILE);
-  for (let y = 2; y < TILE; y += 4) {
-    px(0, y, 0x9a9a9a, 2, 1);
-    px(TILE - 2, y, 0x9a9a9a, 2, 1);
+  px(0, 0, 0x8a8a8a, 3, TILE); // rails
+  px(TILE - 3, 0, 0x8a8a8a, 3, TILE);
+  for (let y = 0; y < TILE; y += 8) {
+    px(0, y, 0x3e3e3e, 3, 3); // posts
+    px(TILE - 3, y, 0x3e3e3e, 3, 3);
   }
   g.generateTexture('tile-bridge', TILE, TILE);
 
   // ---------- tree: a round canopy seen from above, lit from the top left, over a short trunk ----------
   // Transparent background: it is drawn over a ground tile so the two take different tints.
   g.clear();
-  g.fillStyle(0x000000, 0.28).fillEllipse(17, 27, 24, 8); // shadow on the ground
+  g.fillStyle(0x000000, 0.22).fillEllipse(17, 28, 16, 5); // shadow on the ground
   px(13, 23, 0x5e5e5e, 6, 6); // trunk
   px(13, 23, 0x7a7a7a, 1, 6);
   px(18, 23, 0x4a4a4a, 1, 6);
@@ -197,7 +200,8 @@ export function ensureTextures(scene: Phaser.Scene): void {
     '.OwwWwwWwwWwwWwwO.',
     '.OwwWwwWwwWwwWwwO.',
   ];
-  grid(door, { O: 0x3a3a3a, w: 0x8c8c8c, W: 0x7a7a7a }, 7, 4);
+  grid(door, { O: 0x3a3a3a, w: 0xa4a4a4, W: 0x8e8e8e }, 7, 4);
+  px(9, 30, 0xe8e8e8, 14, 1); // lit threshold
   px(10, 17, 0x5a5a5a, 4, 1); // knocker band
   px(19, 16, 0xf0f0f0, 2, 2); // ring highlight
   px(18, 17, 0xc8c8c8, 1, 2);
@@ -223,7 +227,8 @@ export function ensureTextures(scene: Phaser.Scene): void {
     px(TILE - 5, 0, 0x9e9e9e, 5, TILE);
     px(0, 0, 0xb8b8b8, TILE, 5);
     px(1, 1, 0xcacaca, TILE - 2, 1);
-    const bottom = open ? 9 : TILE;
+    const bottom = open ? 14 : TILE;
+    px(5, 5, 0x3a3a3a, TILE - 10, 2); // lintel
     for (let x = 7; x < TILE - 5; x += 5) px(x, 5, 0x5a5a5a, 2, bottom - 5);
     for (let y = 9; y < bottom; y += 7) px(5, y, 0x6a6a6a, TILE - 10, 2);
     if (!open) for (let x = 7; x < TILE - 5; x += 5) px(x, TILE - 4, 0x3a3a3a, 2, 4); // spikes into the ground
@@ -250,9 +255,9 @@ export function ensureTextures(scene: Phaser.Scene): void {
   g.clear();
   px(0, 0, 0xd8d8d8, TILE, TILE);
   px(6, 28, 0x9a9a9a, 20, 3);
-  px(14, 15, 0x6e6e6e, 4, 13); // post
-  px(14, 15, 0x8a8a8a, 1, 13);
-  px(9, 26, 0x6e6e6e, 14, 3); // foot
+  px(13, 15, 0x5a5a5a, 6, 13); // post
+  px(13, 15, 0x8a8a8a, 1, 13);
+  px(7, 26, 0x3e3e3e, 18, 4); // foot
   const book: string[] = [
     '..OOOOOOOOOOOOOOOOOOOO..',
     '.OwwwwwwwwwOOwwwwwwwwwO.',

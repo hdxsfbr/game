@@ -37,12 +37,24 @@ export class ResultsScene extends Phaser.Scene {
     super('results');
   }
 
+  preload(): void {
+    if (!this.textures.exists('card-results')) {
+      this.load.image('card-results', 'cards/results.png');
+      this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
+    }
+  }
+
   create(): void {
     ensureTextures(this);
     const { width, height } = this.scale;
     const p = PALETTES.stage;
     this.cameras.main.setBackgroundColor(p.sky);
     this.cameras.main.fadeIn(600, 0, 0, 0);
+    if (this.textures.exists('card-results')) {
+      const img = this.add.image(width / 2, height / 2, 'card-results');
+      img.setScale(Math.max(width / img.width, height / img.height));
+      this.add.rectangle(0, 0, width, height, 0x0d0b16, 0.7).setOrigin(0);
+    }
     this.add.image(width / 2, 110, 'glow').setScale(6).setTint(p.accent).setAlpha(0.35);
 
     this.add.text(width / 2, 60, 'The kingdom is listening again.', { fontFamily: FONT, fontSize: '40px', color: '#f6efe2' }).setOrigin(0.5);

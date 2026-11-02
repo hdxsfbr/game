@@ -208,6 +208,15 @@ async function jump(area, x, y) {
   await page.mouse.click(r.x + (r.w * 650) / 960, r.y + (r.h * 290) / 540);
   await waitFor((st) => st.area === area, 8000, 'area ' + area);
   await sleep(400);
+  await dismissCard();
+}
+
+/** The story card shown on first arrival in an area: Space closes it. */
+async function dismissCard() {
+  if (await page.evaluate(() => !!(window.__lk && window.__lk.storyCard && window.__lk.storyCard.visible))) {
+    await press('Space');
+    await sleep(500);
+  }
 }
 
 await page.goto(`${base}/?reset=1`, { waitUntil: 'load' });
@@ -232,6 +241,8 @@ await sleep(2800);
 await page.keyboard.up('ArrowLeft');
 await waitFor((st) => st.area === 'valley', 8000, 'walked to valley');
 await sleep(900);
+await shot('04a-valley-card');
+await dismissCard();
 await shot('04-valley');
 
 // Valley: run the voice out at the first bridge, wake at the bench, drill back up, then open doors.

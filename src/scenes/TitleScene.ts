@@ -23,21 +23,35 @@ export class TitleScene extends Phaser.Scene {
     this.startAt = data ?? {};
   }
 
+  preload(): void {
+    if (!this.textures.exists('card-title')) {
+      this.load.image('card-title', 'cards/title.png');
+      this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
+    }
+  }
+
   create(): void {
     ensureTextures(this);
     const { width, height } = this.scale;
     const p = PALETTES.hub;
     this.cameras.main.setBackgroundColor(0x1a1824);
 
-    // A quiet, grey kingdom silhouette: a few blocks and a single warm glow.
-    const g = this.add.graphics();
-    g.fillStyle(0x2a2733).fillRect(0, height - 150, width, 150);
-    for (let i = 0; i < 12; i++) {
-      const w = 40 + ((i * 37) % 50);
-      const h = 50 + ((i * 53) % 90);
-      g.fillStyle(0x34303f).fillRect(60 + i * 72, height - 150 - h, w, h);
+    if (this.textures.exists('card-title')) {
+      // The generated backdrop, darkened so the text reads over it.
+      const img = this.add.image(width / 2, height / 2, 'card-title');
+      img.setScale(Math.max(width / img.width, height / img.height));
+      this.add.rectangle(0, 0, width, height, 0x0d0b16, 0.55).setOrigin(0);
+    } else {
+      // A quiet, grey kingdom silhouette: a few blocks and a single warm glow.
+      const g = this.add.graphics();
+      g.fillStyle(0x2a2733).fillRect(0, height - 150, width, 150);
+      for (let i = 0; i < 12; i++) {
+        const w = 40 + ((i * 37) % 50);
+        const h = 50 + ((i * 53) % 90);
+        g.fillStyle(0x34303f).fillRect(60 + i * 72, height - 150 - h, w, h);
+      }
+      this.add.image(width / 2, height - 170, 'glow').setScale(5).setTint(p.accent).setAlpha(0.5);
     }
-    this.add.image(width / 2, height - 170, 'glow').setScale(5).setTint(p.accent).setAlpha(0.5);
 
     this.add.text(width / 2, 120, 'The Listening Kingdom', { fontFamily: FONT, fontSize: '54px', color: '#f6efe2' }).setOrigin(0.5);
     this.add

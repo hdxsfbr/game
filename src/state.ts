@@ -21,6 +21,8 @@ export interface Progress {
   voice: number;
   /** Times the voice ran out. */
   quiets: number;
+  /** Areas whose story card has been shown. */
+  cardsSeen: string[];
 }
 
 export const VOICE_MAX = 5;
@@ -32,7 +34,7 @@ export const VOICE_DRILL_CAP = 3;
 const KEY = 'listening-kingdom.progress.v1';
 
 export function defaultProgress(): Progress {
-  return { inputMode: 'play', solved: [], misses: {}, fragments: 0, area: 'hub', x: 0, y: 0, areaMisses: {}, finished: false, voice: VOICE_MAX, quiets: 0 };
+  return { inputMode: 'play', solved: [], misses: {}, fragments: 0, area: 'hub', x: 0, y: 0, areaMisses: {}, finished: false, voice: VOICE_MAX, quiets: 0, cardsSeen: [] };
 }
 
 export function loadProgress(): Progress {
