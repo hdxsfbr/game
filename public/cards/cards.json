@@ -1,10 +1,93 @@
 [
  {
   "name": "title",
-  "prompt": "a small hooded traveller seen from behind looks out over a silent kingdom at dusk, everything desaturated and grey, muted stone and mist, a distant hilltop town with a single warm lit window, a valley with a river and bridges, moody and still, coherent crisp 16-bit pixel art, strong hard pixel clusters, no smooth antialiasing, limited palette, wide landscape game illustration, no text",
-  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, smooth gradients, frame, border",
+  "prompt": "a small hooded traveller seen from behind looks out over a silent kingdom at dusk, everything desaturated and grey, muted stone and mist, a distant hilltop town with a single warm lit window, a valley with a river and bridges, moody and still, coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, rich atmospheric light, wide cinematic landscape, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution",
   "seed": 11,
   "steps": 30,
+  "size": [
+   1536,
+   864
+  ],
+  "finish": "painted",
+  "model": "stabilityai/stable-diffusion-xl-base-1.0"
+ },
+ {
+  "name": "hub",
+  "prompt": "inside a quiet stone hearth hall, a big wooden door with a round ring, a warm lantern on a bench, an open songbook, cosy and dim, coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, rich atmospheric light, wide cinematic landscape, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution",
+  "seed": 11,
+  "steps": 30,
+  "size": [
+   1536,
+   864
+  ],
+  "finish": "painted",
+  "model": "stabilityai/stable-diffusion-xl-base-1.0"
+ },
+ {
+  "name": "valley",
+  "prompt": "a green valley with wooden bridges over a bright river, stone gates set into cliffs, two round trees, morning light, coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, rich atmospheric light, wide cinematic landscape, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution",
+  "seed": 11,
+  "steps": 30,
+  "size": [
+   1536,
+   864
+  ],
+  "finish": "painted",
+  "model": "stabilityai/stable-diffusion-xl-base-1.0"
+ },
+ {
+  "name": "town",
+  "prompt": "a terracotta hilltop town square with a bell tower, market stalls with awnings, a stone well, a clock tower, warm afternoon light, coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, rich atmospheric light, wide cinematic landscape, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution",
+  "seed": 11,
+  "steps": 30,
+  "size": [
+   1536,
+   864
+  ],
+  "finish": "painted",
+  "model": "stabilityai/stable-diffusion-xl-base-1.0"
+ },
+ {
+  "name": "jazz",
+  "prompt": "a violet night street of jazz clubs with glowing signs, a small band stand with a double bass, rain-wet cobbles, neon reflections, coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, rich atmospheric light, wide cinematic landscape, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution",
+  "seed": 11,
+  "steps": 30,
+  "size": [
+   1536,
+   864
+  ],
+  "finish": "painted",
+  "model": "stabilityai/stable-diffusion-xl-base-1.0"
+ },
+ {
+  "name": "stage",
+  "prompt": "an empty golden stage in a dark theatre, one spotlight on the boards, red curtains, waiting silence, coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, rich atmospheric light, wide cinematic landscape, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution",
+  "seed": 11,
+  "steps": 30,
+  "size": [
+   1536,
+   864
+  ],
+  "finish": "painted",
+  "model": "stabilityai/stable-diffusion-xl-base-1.0"
+ },
+ {
+  "name": "results",
+  "prompt": "the same hilltop kingdom in full colour at sunrise, music notes drifting over the town and the valley, joyful, coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, rich atmospheric light, wide cinematic landscape, no text",
+  "negative": "text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution",
+  "seed": 11,
+  "steps": 30,
+  "size": [
+   1536,
+   864
+  ],
+  "finish": "painted",
   "model": "stabilityai/stable-diffusion-xl-base-1.0"
  }
 ]

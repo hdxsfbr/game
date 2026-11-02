@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Story cards and the title backdrop, generated locally with SDXL and finished as pixel art.
+"""Story cards and the title backdrop, generated locally with SDXL.
 
-Pipeline (see docs/art-plan.md): one style sentence for every prompt, 1024x576 render, area-average
-downscale to 256x144, quantise to a small palette, nearest-neighbour upscale back to 1024x576.
-Writes public/cards/<name>.png and scratch/cards/<name>-raw.png.
+Default: a hand-painted style at 1536x864, saved as is (the cards fill the screen, so they stay
+sharp). --pixel instead renders 1024x576, downscales to 256x144, quantises to the area palette and
+upscales with hard pixels, matching the world tiles. One style sentence on every prompt.
+Writes public/cards/<name>.png (jpg for painted) and scratch/cards/<name>-raw.png.
 
-Usage: scripts/gen_cards.py [--only title,valley] [--seed 7] [--steps 30]
+Usage: scripts/gen_cards.py [--only title,valley] [--seed 7] [--steps 30] [--pixel]
 Needs: torch with CUDA, diffusers, pillow. First run downloads stabilityai/stable-diffusion-xl-base-1.0.
 """
 import argparse
@@ -13,11 +14,15 @@ import json
 import time
 from pathlib import Path
 
-STYLE = (
+STYLE_PIXEL = (
     'coherent crisp 16-bit pixel art, strong hard pixel clusters, no smooth antialiasing, '
     'limited palette, wide landscape game illustration, no text'
 )
-NEGATIVE = 'text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, smooth gradients, frame, border'
+STYLE_PAINTED = (
+    'coherent hand-painted 2D game illustration, visible broad brush edges, soft texturing, '
+    'rich atmospheric light, wide cinematic landscape, no text'
+)
+NEGATIVE = 'text, letters, words, watermark, signature, blurry, photo, photorealistic, 3d render, frame, border, pixelated, low resolution'
 
 CARDS = {
     'title': 'a small hooded traveller seen from behind looks out over a silent kingdom at dusk, everything desaturated and grey, muted stone and mist, a distant hilltop town with a single warm lit window, a valley with a river and bridges, moody and still',
@@ -67,7 +72,10 @@ def main():
     ap.add_argument('--seed', type=int, default=7)
     ap.add_argument('--steps', type=int, default=30)
     ap.add_argument('--out', default='public/cards')
+    ap.add_argument('--pixel', action='store_true', help='pixel-art finish at 1024x576 instead of painted 1536x864')
     args = ap.parse_args()
+    style = STYLE_PIXEL if args.pixel else STYLE_PAINTED
+    size = (1024, 576) if args.pixel else (1536, 864)
     names = [n for n in args.only.split(',') if n] or list(CARDS)
 
     import torch
@@ -81,14 +89,18 @@ def main():
     Path('scratch/cards').mkdir(parents=True, exist_ok=True)
     log = []
     for name in names:
-        prompt = f'{CARDS[name]}, {STYLE}'
+        prompt = f'{CARDS[name]}, {style}'
         gen = torch.Generator('cuda').manual_seed(args.seed)
         t1 = time.time()
-        img = pipe(prompt=prompt, negative_prompt=NEGATIVE, width=1024, height=576, num_inference_steps=args.steps, guidance_scale=7.0, generator=gen).images[0]
+        img = pipe(prompt=prompt, negative_prompt=NEGATIVE, width=size[0], height=size[1], num_inference_steps=args.steps, guidance_scale=7.0, generator=gen).images[0]
         img.save(f'scratch/cards/{name}-raw.png')
-        finish(img, PALETTES[name]).save(out / f'{name}.png')
+        if args.pixel:
+            finish(img, PALETTES[name]).save(out / f'{name}.png')
+        else:
+            (out / f'{name}.png').unlink(missing_ok=True)
+            img.convert('RGB').save(out / f'{name}.jpg', quality=88)
         print(f'{name}: {time.time() - t1:.0f}s', flush=True)
-        log.append({'name': name, 'prompt': prompt, 'negative': NEGATIVE, 'seed': args.seed, 'steps': args.steps, 'model': 'stabilityai/stable-diffusion-xl-base-1.0'})
+        log.append({'name': name, 'prompt': prompt, 'negative': NEGATIVE, 'seed': args.seed, 'steps': args.steps, 'size': size, 'finish': 'pixel' if args.pixel else 'painted', 'model': 'stabilityai/stable-diffusion-xl-base-1.0'})
     (out / 'cards.json').write_text(json.dumps(log, indent=1))
 
 

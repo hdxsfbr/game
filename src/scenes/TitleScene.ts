@@ -28,7 +28,7 @@ export class TitleScene extends Phaser.Scene {
   preload(): void {
     if (!this.textures.exists('card-title') && !titleCardQueued) {
       titleCardQueued = true;
-      this.load.image('card-title', 'cards/title.png');
+      this.load.image('card-title', 'cards/title.jpg');
       this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
     }
   }

@@ -39,7 +39,7 @@ export class ResultsScene extends Phaser.Scene {
 
   preload(): void {
     if (!this.textures.exists('card-results')) {
-      this.load.image('card-results', 'cards/results.png');
+      this.load.image('card-results', 'cards/results.jpg');
       this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
     }
   }

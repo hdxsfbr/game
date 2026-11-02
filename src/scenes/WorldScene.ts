@@ -105,7 +105,7 @@ export class WorldScene extends Phaser.Scene {
     const areaId = (this.scene.settings.data as WorldData | undefined)?.area ?? progress.area ?? 'hub';
     if (!this.textures.exists(`card-${areaId}`) && !progress.cardsSeen.includes(areaId) && !cardsQueued.has(areaId)) {
       cardsQueued.add(areaId);
-      this.load.image(`card-${areaId}`, `cards/${areaId}.png`);
+      this.load.image(`card-${areaId}`, `cards/${areaId}.jpg`);
       this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => undefined);
     }
   }
