@@ -62,7 +62,8 @@ export class WorldScene extends Phaser.Scene {
   private blooms: Bloom[] = [];
   private doors: DoorView[] = [];
   private gates: GateView[] = [];
-  private player!: Phaser.GameObjects.Image;
+  private player!: Phaser.GameObjects.Sprite;
+  private facing: 'south' | 'west' | 'east' | 'north' = 'south';
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private panel!: PuzzlePanel;
@@ -91,6 +92,20 @@ export class WorldScene extends Phaser.Scene {
     super('world');
   }
 
+  preload(): void {
+    // The player: a PixelLab sheet, 48 px cells, row 0 the four facings, rows 1..4 six-frame walks (see scripts/pixellab_player.py).
+    if (!this.textures.exists('player-sheet')) this.load.spritesheet('player-sheet', 'sprites/player/player.png', { frameWidth: 48, frameHeight: 48 });
+  }
+
+  /** Walk animations from the sheet, made once. */
+  private ensurePlayerAnims(): void {
+    if (this.anims.exists('walk-south')) return;
+    this.textures.get('player-sheet').setFilter(Phaser.Textures.FilterMode.NEAREST);
+    (['south', 'west', 'east', 'north'] as const).forEach((d, i) => {
+      this.anims.create({ key: `walk-${d}`, frames: this.anims.generateFrameNumbers('player-sheet', { start: 6 * (i + 1), end: 6 * (i + 1) + 5 }), frameRate: 9, repeat: -1 });
+    });
+  }
+
   create(data: WorldData): void {
     // scene.restart() reuses this instance, so per-area collections must be reset here.
     this.tiles = [];
@@ -116,7 +131,9 @@ export class WorldScene extends Phaser.Scene {
     this.buildEntities();
 
     const at = data.at ?? (progress.area === this.area.id && progress.x > 0 ? { x: progress.x, y: progress.y } : this.area.start);
-    this.player = this.add.image(at.x * TILE + TILE / 2, at.y * TILE + TILE / 2 + 4, 'player').setDepth(10).setTint(this.palette.accent);
+    this.ensurePlayerAnims();
+    this.facing = 'south';
+    this.player = this.add.sprite(at.x * TILE + TILE / 2, at.y * TILE + TILE / 2 + 4, 'player-sheet', 0).setOrigin(0.5, 0.65).setDepth(10);
 
     const w = this.area.map[0].length * TILE;
     const h = this.area.map.length * TILE;
@@ -900,7 +917,6 @@ export class WorldScene extends Phaser.Scene {
     if (this.mapView.visible) {
       const flags = this.flags();
       this.mapView.update(progress, this.playerTile(), (f) => flags.has(f));
-      this.player.setScale(1, 1);
     }
 
     // Movement.
@@ -919,10 +935,11 @@ export class WorldScene extends Phaser.Scene {
         const before = Math.floor(this.walkPhase / Math.PI);
         this.walkPhase += delta / 90;
         if (Math.floor(this.walkPhase / Math.PI) !== before) footstep();
-        this.player.setScale(1 + Math.sin(this.walkPhase) * 0.04, 1 - Math.sin(this.walkPhase) * 0.04);
-        if (dx) this.player.setFlipX(dx < 0);
-      } else {
-        this.player.setScale(1, 1);
+        this.facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'west' : 'east') : dy < 0 ? 'north' : 'south';
+        this.player.anims.play(`walk-${this.facing}`, true);
+      } else if (this.player.anims.isPlaying) {
+        this.player.anims.stop();
+        this.player.setFrame(['south', 'west', 'east', 'north'].indexOf(this.facing));
       }
       this.player.setDepth(10 + this.player.y / 10000);
       this.checkPickup();
