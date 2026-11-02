@@ -58,6 +58,8 @@ export class WorldScene extends Phaser.Scene {
   private palette!: Palette;
   private blocked: boolean[][] = [];
   private tiles: TileView[] = [];
+  private waterTiles: TileView[] = [];
+  private waterFrame = 0;
   private tileAt = new Map<string, TileView>();
   private blooms: Bloom[] = [];
   private doors: DoorView[] = [];
@@ -109,6 +111,7 @@ export class WorldScene extends Phaser.Scene {
   create(data: WorldData): void {
     // scene.restart() reuses this instance, so per-area collections must be reset here.
     this.tiles = [];
+    this.waterTiles = [];
     this.tileAt = new Map();
     this.blooms = [];
     this.doors = [];
@@ -173,20 +176,31 @@ export class WorldScene extends Phaser.Scene {
   private buildTiles(): void {
     const map = this.area.map;
     this.blocked = map.map((row) => [...row].map((c) => c === '#' || c === '~' || c === 'T' || c === 'D' || c === 'G'));
+    const wallAt = (x: number, y: number) => (map[y]?.[x] ?? '#') === '#';
     map.forEach((row, y) => {
       [...row].forEach((c, x) => {
         let key = 'tile-ground';
         let kind = 'ground';
-        if (c === '#') (key = 'tile-wall'), (kind = 'wall');
-        else if (c === '~') (key = 'tile-water'), (kind = 'water');
-        else if (c === 'T') (key = 'tile-tree'), (kind = 'tree');
+        if (c === '#') {
+          // A block of walls reads as a building or cliff: shingled top, a ridge along its upper edge, a brick face where it meets the ground.
+          kind = 'wall';
+          key = !wallAt(x, y + 1) ? 'tile-wall-face' : !wallAt(x, y - 1) ? 'tile-wall-ridge' : 'tile-wall-top';
+        } else if (c === '~') (key = 'tile-water-a'), (kind = 'water');
         else if (c === '=') (key = 'tile-bridge'), (kind = 'bridge');
         else if ((x * 7 + y * 13) % 5 === 0) key = 'tile-ground-alt';
-        const img = this.add.image(x * TILE, y * TILE, key).setOrigin(0).setDepth(kind === 'tree' ? 5 : 0);
+        const img = this.add.image(x * TILE, y * TILE, key).setOrigin(0).setDepth(0);
         const tv: TileView = { img, x, y, kind, life: 0, target: 0 };
         this.applyTint(tv);
         this.tiles.push(tv);
+        if (kind === 'water') this.waterTiles.push(tv);
         this.tileAt.set(`${x},${y}`, tv);
+        if (c === 'T') {
+          // The tree stands on its ground tile and takes the tree tint on its own.
+          const tree = this.add.image(x * TILE, y * TILE, 'tile-tree').setOrigin(0).setDepth(5);
+          const tt: TileView = { img: tree, x, y, kind: 'tree', life: 0, target: 0 };
+          this.applyTint(tt);
+          this.tiles.push(tt);
+        }
       });
     });
   }
@@ -208,7 +222,7 @@ export class WorldScene extends Phaser.Scene {
         const imgs = e.tiles.map((t) => {
           const base = this.tileAt.get(`${t.x},${t.y}`)!;
           base.img.setTexture('tile-ground');
-          return this.add.image(t.x * TILE, t.y * TILE, 'door-closed').setOrigin(0).setDepth(6);
+          return this.add.image(t.x * TILE, t.y * TILE, 'gate-closed').setOrigin(0).setDepth(6);
         });
         this.gates.push({ def: e, imgs, open: false });
       } else if (e.kind === 'practice') {
@@ -322,6 +336,7 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(lerpColor(GREY.sky, this.palette.sky, this.areaLife()));
     for (const d of this.doors) for (const img of d.imgs) img.setTint(lerpColor(GREY.accent, this.palette.accent, d.solved ? 1 : 0.35 + 0.65 * this.areaLife()));
     for (const g of this.gates) for (const img of g.imgs) img.setTint(g.open ? this.palette.accent : lerpColor(GREY.wall, this.palette.wall, this.areaLife()));
+    if (this.practice) this.practice.img.setTint(lerpColor(GREY.bridge, this.palette.bridge, this.areaLife()));
   }
 
   private bloomAt(x: number, y: number, max = 14): void {
@@ -849,7 +864,7 @@ export class WorldScene extends Phaser.Scene {
       if (open !== g.open) {
         g.open = open;
         for (const t of g.def.tiles) this.blocked[t.y][t.x] = !open;
-        for (const img of g.imgs) img.setTexture(open ? 'door-open' : 'door-closed');
+        for (const img of g.imgs) img.setTexture(open ? 'gate-open' : 'gate-closed');
       }
     }
   }
@@ -961,6 +976,11 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (this.toast.visible && time > this.toastUntil) this.toast.setVisible(false);
+    const wf = Math.floor(time / 550) % 2;
+    if (wf !== this.waterFrame) {
+      this.waterFrame = wf;
+      for (const tv of this.waterTiles) tv.img.setTexture(wf ? 'tile-water-b' : 'tile-water-a');
+    }
     this.updateColour(delta);
     MusicPlayer.get().setLife(this.areaLife());
   }
