@@ -1,40 +1,19 @@
-import Phaser from 'phaser';
-import { ResultsScene } from './scenes/ResultsScene';
-import { TitleScene } from './scenes/TitleScene';
-import { TunerScene } from './scenes/TunerScene';
-import { WorldScene } from './scenes/WorldScene';
+import './overlay/ui.css';
+import { App } from './scenes3d/App';
 
-export const GAME_WIDTH = 960;
-export const GAME_HEIGHT = 540;
-
-// Shortcuts: ?reset=1 clears saved progress. ?scene=tuner, or ?scene=world&area=valley&x=57&y=16 to start the world there (dev).
+// Shortcuts: ?reset=1 clears saved progress. ?scene=world&area=valley&x=57&y=16 starts the world there after the title (dev).
 const params = new URLSearchParams(location.search);
 if (params.get('reset')) {
   localStorage.removeItem('listening-kingdom.progress.v1');
   params.delete('reset');
   history.replaceState(null, '', location.pathname + (params.size ? '?' + params.toString() : ''));
 }
-const startScene = params.get('scene') === 'tuner' ? 'tuner' : params.get('scene') === 'world' ? 'world' : 'title';
 
-const game = new Phaser.Game({
-  type: Phaser.WEBGL,
-  parent: 'game',
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
-  backgroundColor: '#14151a',
-  pixelArt: false,
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [TitleScene, WorldScene, ResultsScene, TunerScene],
-});
+const x = Number(params.get('x'));
+const y = Number(params.get('y'));
+const startAt = params.get('scene') === 'world' ? { area: params.get('area') ?? undefined, at: x && y ? { x, y } : undefined } : {};
 
-game.events.once('ready', () => {
-  if (startScene === 'tuner') {
-    game.scene.stop('title');
-    game.scene.start('tuner', {});
-  } else if (startScene === 'world') {
-    // The title screen still runs first: choosing Sing or Play is the click that unlocks audio and asks for the mic.
-    const x = Number(params.get('x'));
-    const y = Number(params.get('y'));
-    game.scene.getScene('title').scene.restart({ area: params.get('area') ?? undefined, at: x && y ? { x, y } : undefined });
-  }
-});
+const canvas = document.getElementById('view') as HTMLCanvasElement;
+const ui = document.getElementById('ui') as HTMLDivElement;
+const app = new App(canvas, ui);
+void app.start(startAt);

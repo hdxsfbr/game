@@ -1,0 +1,705 @@
+"""
+Build a stylized low-poly 3D scene for one area of The Listening Kingdom from its ASCII map and
+export it as glTF.
+
+    blender -b -P scripts/blender/build_area.py -- --area hub [--out public/world]
+    blender -b -P scripts/blender/build_area.py -- --all
+
+The map and the entities come straight from src/world/areas.ts (parsed as text, so the 2D and 3D
+worlds can never drift apart); colours come from src/world/palette.ts.
+
+Legend: # wall, . ground, ~ water, T tree, = bridge, D door tile, X exit, G gate.
+
+Coordinates: tile (tx, ty) sits at Blender (tx + 0.5, -(ty + 0.5), 0), i.e. map north is +Y here.
+The glTF exporter turns that into Y-up, so in the game (right-handed) a tile is at
+(tx + 0.5, 0, ty + 0.5) and the map's south is +Z.
+
+Objects the game looks up by name:
+  door:<puzzleId>:<i>   one per door tile, removed (sunk / faded) when the puzzle is solved
+  gate:<flag>:<i>       one per gate tile, raised when the flag is set
+  bench                 the practice bench
+Everything else is joined into a few static meshes (ground, water, walls, trees, bridges, props).
+"""
+import argparse
+import math
+import os
+import re
+import sys
+
+import bmesh
+import bpy
+from mathutils import Vector
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+AREAS_TS = os.path.join(ROOT, 'src', 'world', 'areas.ts')
+PALETTE_TS = os.path.join(ROOT, 'src', 'world', 'palette.ts')
+
+WALL = '#'
+GROUND = '.'
+WATER = '~'
+TREE = 'T'
+BRIDGE = '='
+DOOR = 'D'
+EXIT = 'X'
+GATE = 'G'
+
+# ---------------------------------------------------------------- parsing the TypeScript
+
+
+def parse_areas(src):
+    """Return {id: {'id', 'palette', 'map': [rows], 'entities': [dict]}} from areas.ts."""
+    areas = {}
+    for m in re.finditer(r'export const (\w+): AreaDef = \{(.*?)\n\};', src, re.S):
+        body = m.group(2)
+        area_id = re.search(r"\bid: '([\w-]+)'", body).group(1)
+        palette = re.search(r"\bpalette: '(\w+)'", body).group(1)
+        map_block = re.search(r'\bmap: \[(.*?)\n\s*\],', body, re.S).group(1)
+        rows = re.findall(r"'([^']*)'", map_block)
+        start = re.search(r'\bstart: \{ x: (\d+), y: (\d+) \}', body)
+        ent_start = body.index('entities: [')
+        entities = []
+        depth = 0
+        cur = None
+        for i in range(ent_start + len('entities: ['), len(body)):
+            ch = body[i]
+            if ch == '{':
+                if depth == 0:
+                    cur = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and cur is not None:
+                    entities.append(parse_entity(body[cur:i + 1]))
+                    cur = None
+            elif ch == ']' and depth == 0:
+                break
+        areas[area_id] = {
+            'id': area_id,
+            'palette': palette,
+            'map': rows,
+            'start': (int(start.group(1)), int(start.group(2))),
+            'entities': [e for e in entities if e],
+        }
+    return areas
+
+
+def parse_entity(text):
+    kind = re.search(r"kind: '(\w+)'", text).group(1)
+    e = {'kind': kind}
+    tiles_re = r'\{ x: (\d+), y: (\d+) \}'
+    if kind in ('door', 'gate', 'exit'):
+        tiles_block = re.search(r'tiles: \[(.*?)\]', text, re.S).group(1)
+        e['tiles'] = [(int(x), int(y)) for x, y in re.findall(tiles_re, tiles_block)]
+    if kind == 'door':
+        e['id'] = re.search(r"\bid: '([\w-]+)'", text).group(1)
+        tex = re.search(r"texture: '([\w-]+)'", text)
+        e['texture'] = tex.group(1) if tex else 'door-closed'
+    elif kind == 'gate':
+        e['flag'] = re.search(r"flag: '([\w-]+)'", text).group(1)
+    elif kind in ('practice', 'fragment'):
+        t = re.search(r'tile: ' + tiles_re, text)
+        e['tile'] = (int(t.group(1)), int(t.group(2)))
+        if kind == 'practice':
+            a = re.search(r'at: ' + tiles_re, text)
+            e['at'] = (int(a.group(1)), int(a.group(2)))
+    elif kind == 'exit':
+        e['to'] = re.search(r"to: '(\w+)'", text).group(1)
+    return e
+
+
+def parse_palettes(src):
+    block = src[src.index('export const PALETTES'):]
+    out = {}
+    for m in re.finditer(r'\n  (\w+): \{(.*?)\n  \},', block, re.S):
+        out[m.group(1)] = {k: int(v, 16) for k, v in re.findall(r'(\w+): 0x([0-9a-fA-F]{6})', m.group(2))}
+    return out
+
+
+# ---------------------------------------------------------------- helpers
+
+
+def srgb_to_linear(c):
+    c = c / 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def hex_rgb(h, mul=1.0):
+    r, g, b = (h >> 16) & 255, (h >> 8) & 255, h & 255
+    return tuple(min(1.0, srgb_to_linear(v) * mul) for v in (r, g, b))
+
+
+def shade(h, k):
+    """Darken (k < 1) or lighten (k > 1) an sRGB hex colour."""
+    r, g, b = (h >> 16) & 255, (h >> 8) & 255, h & 255
+    f = lambda v: max(0, min(255, int(v * k)))
+    return (f(r) << 16) | (f(g) << 8) | f(b)
+
+
+_materials = {}
+
+
+def material(name, rgb_hex, rough=0.85, metal=0.0, emission=None, alpha=1.0, mul=1.0):
+    if name in _materials:
+        return _materials[name]
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    bsdf = m.node_tree.nodes['Principled BSDF']
+    bsdf.inputs['Base Color'].default_value = (*hex_rgb(rgb_hex, mul), 1.0)
+    bsdf.inputs['Roughness'].default_value = rough
+    bsdf.inputs['Metallic'].default_value = metal
+    if emission:
+        bsdf.inputs['Emission Color'].default_value = (*hex_rgb(emission), 1.0)
+        bsdf.inputs['Emission Strength'].default_value = 1.0
+    if alpha < 1.0:
+        bsdf.inputs['Alpha'].default_value = alpha
+        m.blend_method = 'BLEND'
+    _materials[name] = m
+    return m
+
+
+def hash2(x, y, salt=0):
+    v = (x * 73856093) ^ (y * 19349663) ^ (salt * 83492791)
+    v = (v ^ (v >> 13)) * 1274126177
+    return ((v ^ (v >> 16)) & 0xFFFF) / 65535.0
+
+
+class Builder:
+    """Accumulates geometry into a bmesh with per-face material indices, then makes one object."""
+
+    def __init__(self, name):
+        self.name = name
+        self.bm = bmesh.new()
+        self.mats = []
+        self.sharp_edges = []
+
+    def mat_index(self, m):
+        if m not in self.mats:
+            self.mats.append(m)
+        return self.mats.index(m)
+
+    def box(self, center, size, mat, bevel=0.0, segments=2, smooth=True):
+        """An axis-aligned box. center (x, y, z), size (sx, sy, sz)."""
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1.0)
+        for v in bm.verts:
+            v.co = Vector((v.co.x * size[0], v.co.y * size[1], v.co.z * size[2]))
+        if bevel > 0:
+            bmesh.ops.bevel(bm, geom=bm.verts[:] + bm.edges[:], offset=min(bevel, min(size) * 0.45), segments=segments, affect='EDGES', profile=0.7)
+        for v in bm.verts:
+            v.co += Vector(center)
+        self._absorb(bm, mat, smooth)
+
+    def sphere(self, center, radius, mat, scale=(1, 1, 1), subdiv=2, smooth=True):
+        bm = bmesh.new()
+        bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=radius)
+        for v in bm.verts:
+            v.co = Vector((v.co.x * scale[0], v.co.y * scale[1], v.co.z * scale[2])) + Vector(center)
+        self._absorb(bm, mat, smooth)
+
+    def cylinder(self, center, radius, height, mat, segments=10, radius2=None, smooth=True):
+        bm = bmesh.new()
+        bmesh.ops.create_cone(bm, cap_ends=True, segments=segments, radius1=radius, radius2=radius if radius2 is None else radius2, depth=height)
+        for v in bm.verts:
+            v.co += Vector(center)
+        self._absorb(bm, mat, smooth)
+
+    def quad(self, p0, p1, p2, p3, mat, smooth=False):
+        bm = bmesh.new()
+        vs = [bm.verts.new(Vector(p)) for p in (p0, p1, p2, p3)]
+        bm.faces.new(vs)
+        self._absorb(bm, mat, smooth)
+
+    def grid(self, x0, y0, x1, y1, nx, ny, mat, zfunc, colfunc=None):
+        """A subdivided ground plane with per-vertex height from zfunc(x, y) and face colour from colfunc(cx, cy)."""
+        bm = bmesh.new()
+        col_layer = bm.loops.layers.color.new('Col') if colfunc else None
+        verts = []
+        for j in range(ny + 1):
+            row = []
+            for i in range(nx + 1):
+                x = x0 + (x1 - x0) * i / nx
+                y = y0 + (y1 - y0) * j / ny
+                row.append(bm.verts.new(Vector((x, y, zfunc(x, y)))))
+            verts.append(row)
+        for j in range(ny):
+            for i in range(nx):
+                f = bm.faces.new((verts[j][i], verts[j][i + 1], verts[j + 1][i + 1], verts[j + 1][i]))
+                if col_layer:
+                    cx = x0 + (x1 - x0) * (i + 0.5) / nx
+                    cy = y0 + (y1 - y0) * (j + 0.5) / ny
+                    c = colfunc(cx, cy)
+                    for loop in f.loops:
+                        loop[col_layer] = (*c, 1.0)
+        self._absorb(bm, mat, smooth=True, keep_colors=bool(col_layer))
+
+    def _absorb(self, src, mat, smooth, keep_colors=False):
+        mi = self.mat_index(mat)
+        for f in src.faces:
+            f.material_index = mi
+            f.smooth = smooth
+        # Mark edges sharper than ~40 degrees so the exporter splits their normals.
+        if smooth:
+            for e in src.edges:
+                if len(e.link_faces) == 2:
+                    a = e.calc_face_angle(None)
+                    if a is not None and a > math.radians(40):
+                        e.smooth = False
+        if keep_colors and 'Col' not in self.bm.loops.layers.color:
+            self.bm.loops.layers.color.new('Col')
+        tmp = bpy.data.meshes.new('tmp')
+        src.to_mesh(tmp)
+        src.free()
+        self.bm.from_mesh(tmp)
+        bpy.data.meshes.remove(tmp)
+
+    def build(self, parent=None, location=(0, 0, 0)):
+        if not self.bm.verts:
+            self.bm.free()
+            return None
+        mesh = bpy.data.meshes.new(self.name)
+        self.bm.to_mesh(mesh)
+        self.bm.free()
+        if 'Col' in mesh.color_attributes:
+            mesh.color_attributes.active_color = mesh.color_attributes['Col']
+            mesh.color_attributes.render_color_index = mesh.color_attributes.find('Col')
+        for m in self.mats:
+            mesh.materials.append(m)
+        obj = bpy.data.objects.new(self.name, mesh)
+        obj.location = location
+        if parent:
+            obj.parent = parent
+        bpy.context.scene.collection.objects.link(obj)
+        return obj
+
+
+# ---------------------------------------------------------------- the area
+
+
+def tile_pos(tx, ty, z=0.0):
+    return (tx + 0.5, -(ty + 0.5), z)
+
+
+class Area:
+    def __init__(self, area, palette):
+        self.area = area
+        self.p = palette
+        self.rows = area['map']
+        self.h = len(self.rows)
+        self.w = max(len(r) for r in self.rows)
+        self.entities = area['entities']
+        self.door_tiles = {}
+        self.gate_tiles = {}
+        for e in self.entities:
+            if e['kind'] == 'door':
+                for i, t in enumerate(e['tiles']):
+                    self.door_tiles[t] = (e, i)
+            elif e['kind'] == 'gate':
+                for i, t in enumerate(e['tiles']):
+                    self.gate_tiles[t] = (e, i)
+
+    def at(self, x, y):
+        if y < 0 or y >= self.h or x < 0 or x >= len(self.rows[y]):
+            return WALL
+        return self.rows[y][x]
+
+    def is_wall(self, x, y):
+        return self.at(x, y) == WALL
+
+    def walkable_near(self, x, y, r=1):
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                if self.at(x + dx, y + dy) != WALL:
+                    return True
+        return False
+
+    # ----- ground
+
+    def build_ground(self):
+        p = self.p
+        margin = 10
+        seg = 2  # vertices per tile
+        x0, y0 = -margin, -(self.h + margin)
+        x1, y1 = self.w + margin, margin
+        nx, ny = int((x1 - x0) * seg), int((y1 - y0) * seg)
+
+        def water_weight(x, y):
+            # Vertices wholly inside water sink to a basin; the bank slopes down to it.
+            tx, ty = x, -y
+            n = 0
+            cnt = 0
+            for dx in (-0.25, 0.25):
+                for dy in (-0.25, 0.25):
+                    cnt += 1
+                    if self.at(int(math.floor(tx + dx)), int(math.floor(ty + dy))) == WATER:
+                        n += 1
+            return n / cnt
+
+        def zfunc(x, y):
+            tx, ty = x, -y
+            inside = 0 <= tx <= self.w and 0 <= ty <= self.h
+            if inside:
+                z = 0.025 * math.sin(tx * 1.7) * math.cos(ty * 1.3) + 0.02 * math.sin(tx * 3.1 + ty * 2.3)
+                z -= 0.45 * water_weight(x, y)
+                return z
+            d = max(0, -tx, tx - self.w, -ty, ty - self.h)
+            # Outside the map the land rolls away and rises into hills behind the walls.
+            return 0.12 * math.sin(tx * 0.9 + 1.3) * math.cos(ty * 0.7) + 0.05 * d + 0.35 * math.sin(tx * 0.35) * math.sin(ty * 0.4)
+
+        # Vertex colour is a brightness modulation over the material colour: a gentle checker of
+        # slightly darker 'alt' tiles, as in the 2D game, plus a little per-tile noise.
+        g0 = hex_rgb(p['ground'])
+        g1 = hex_rgb(p['groundAlt'])
+        alt_ratio = tuple(min(1.0, (b / max(a, 1e-4)) ** 0.5) for a, b in zip(g0, g1))
+
+        def colfunc(cx, cy):
+            tx, ty = int(math.floor(cx)), int(math.floor(-cy))
+            k = hash2(tx, ty, 3)
+            m = 0.97 + 0.06 * k
+            if (tx * 7 + ty * 13) % 5 == 0:
+                return (alt_ratio[0] * m, alt_ratio[1] * m, alt_ratio[2] * m)
+            return (m, m, m)
+
+        b = Builder('ground')
+        b.grid(x0, y0, x1, y1, nx, ny, material('ground', p['ground']), zfunc, colfunc)
+        return b.build()
+
+    # ----- water
+
+    def build_water(self):
+        p = self.p
+        b = Builder('water')
+        m = material('water', p['water'], rough=0.15, alpha=0.82)
+        for y in range(self.h):
+            for x in range(self.w):
+                if self.at(x, y) == WATER:
+                    z = -0.14
+                    b.quad((x, -(y + 1), z), (x + 1, -(y + 1), z), (x + 1, -y, z), (x, -y, z), m)
+        return b.build()
+
+    # ----- walls
+
+    def wall_runs(self):
+        """Merge horizontal runs of wall tiles into (x, y, length) runs."""
+        runs = []
+        for y in range(self.h):
+            x = 0
+            while x < self.w:
+                if self.is_wall(x, y):
+                    x0 = x
+                    while x < self.w and self.is_wall(x, y):
+                        x += 1
+                    runs.append((x0, y, x - x0))
+                else:
+                    x += 1
+        return runs
+
+    def build_walls(self):
+        p = self.p
+        b = Builder('walls')
+        wall = material('wall', p['wall'])
+        top = material('wall-top', shade(p['wall'], 1.18))
+        trim = material('wall-trim', shade(p['wall'], 0.72))
+        for (x0, y, n) in self.wall_runs():
+            # Split long runs into shorter blocks of varying height so a wall reads as buildings or cliff faces.
+            x = x0
+            while x < x0 + n:
+                seg = min(x0 + n - x, 2 + int(hash2(x, y, 1) * 4))
+                near = any(self.walkable_near(xx, y, 1) for xx in range(x, x + seg))
+                hgt = (1.25 + 0.5 * hash2(x, y, 2)) if near else 0.9 + 0.3 * hash2(x, y, 5)
+                cx = x + seg / 2
+                cy = -(y + 0.5)
+                b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.09)
+                # A lighter cap and a dark plinth give the block a top and a base.
+                b.box((cx, cy, hgt + 0.03), (seg - 0.18, 0.82, 0.1), top, bevel=0.04)
+                if near:
+                    b.box((cx, cy, 0.06), (seg + 0.02, 1.02, 0.12), trim, bevel=0.03)
+                x += seg
+        return b.build()
+
+    # ----- trees
+
+    def tree(self, b, tx, ty, canopy, trunk, k=1.0):
+        s = (0.85 + 0.3 * hash2(tx, ty, 7)) * k
+        x, y, _ = tile_pos(tx, ty)
+        x += (hash2(tx, ty, 8) - 0.5) * 0.2
+        y += (hash2(tx, ty, 9) - 0.5) * 0.2
+        b.cylinder((x, y, 0.3 * s), 0.11 * s, 0.6 * s, trunk, segments=8, radius2=0.08 * s)
+        b.sphere((x, y, 0.95 * s), 0.46 * s, canopy, scale=(1, 1, 0.9), subdiv=1)
+        b.sphere((x + 0.18 * s, y - 0.1 * s, 1.2 * s), 0.3 * s, canopy, scale=(1, 1, 0.85), subdiv=1)
+        b.sphere((x - 0.2 * s, y + 0.14 * s, 1.15 * s), 0.28 * s, canopy, scale=(1, 1, 0.9), subdiv=1)
+
+    def build_trees(self):
+        p = self.p
+        b = Builder('trees')
+        canopy = material('canopy', p['tree'])
+        trunk = material('trunk', shade(p['bridge'], 0.6))
+        for y in range(self.h):
+            for x in range(self.w):
+                if self.at(x, y) == TREE:
+                    self.tree(b, x, y, canopy, trunk)
+        return b.build()
+
+    # ----- bridges
+
+    def build_bridges(self):
+        p = self.p
+        b = Builder('bridges')
+        plank = material('plank', p['bridge'])
+        rail = material('rail', shade(p['bridge'], 0.7))
+        for y in range(self.h):
+            for x in range(self.w):
+                if self.at(x, y) != BRIDGE:
+                    continue
+                self.bridge_tile(b, x, y, plank, rail)
+        return b.build()
+
+    def bridge_tile(self, b, x, y, plank, rail):
+        # Planks run across the direction of travel: along x if the bridge runs vertically.
+        horizontal = self.at(x - 1, y) in (BRIDGE, GROUND, DOOR) or self.at(x + 1, y) in (BRIDGE, GROUND, DOOR)
+        cx, cy, _ = tile_pos(x, y)
+        n = 4
+        for i in range(n):
+            o = -0.5 + (i + 0.5) / n
+            if horizontal:
+                b.box((cx + o, cy, 0.04), (1 / n - 0.03, 0.96, 0.08), plank, bevel=0.015)
+            else:
+                b.box((cx, cy + o, 0.04), (0.96, 1 / n - 0.03, 0.08), plank, bevel=0.015)
+        for side in (-1, 1):
+            if horizontal:
+                b.box((cx, cy + side * 0.44, 0.3), (1.0, 0.06, 0.06), rail, bevel=0.01)
+                b.box((cx, cy + side * 0.44, 0.15), (0.06, 0.06, 0.32), rail, bevel=0.01)
+            else:
+                b.box((cx + side * 0.44, cy, 0.3), (0.06, 1.0, 0.06), rail, bevel=0.01)
+                b.box((cx + side * 0.44, cy, 0.15), (0.06, 0.06, 0.32), rail, bevel=0.01)
+
+    # ----- doors, gates, bench
+
+    def door_axis(self, x, y):
+        """'x' when the door faces north/south (walls to its left and right), else 'y'."""
+        if self.is_wall(x - 1, y) or self.is_wall(x + 1, y):
+            return 'x'
+        if self.is_wall(x, y - 1) or self.is_wall(x, y + 1):
+            return 'y'
+        return 'x'
+
+    def build_doors(self, props):
+        p = self.p
+        objs = []
+        frame = material('frame', shade(p['bridge'], 0.8))
+        door_m = material('door', shade(p['accent'], 0.9), rough=0.6)
+        knob = material('knob', p['accent'], rough=0.3, metal=0.6, emission=shade(p['accent'], 0.5))
+        canopy = material('canopy', p['tree'])
+        trunk = material('trunk', shade(p['bridge'], 0.6))
+        serpent_m = material('serpent', shade(p['tree'], 0.9), rough=0.5)
+        serpent_eye = material('serpent-eye', p['accent'], emission=p['accent'])
+        for e in self.entities:
+            if e['kind'] != 'door':
+                continue
+            for i, (x, y) in enumerate(e['tiles']):
+                name = f"door:{e['id']}:{i}"
+                cx, cy, _ = tile_pos(x, y)
+                b = Builder(name)
+                if e['texture'] == 'tile-tree':
+                    self.tree(b, x, y, canopy, trunk, k=1.15)
+                    b.sphere((0, 0, 0), 0.001, canopy)  # keep origin at the tile centre
+                    obj = b.build(location=(0, 0, 0))
+                elif e['texture'] == 'serpent':
+                    r = 0.38
+                    b.sphere((cx, cy, r), r, serpent_m, scale=(1.05, 1.0, 0.8), subdiv=2)
+                    if i == 0:
+                        # The head: a snout and two lit eyes.
+                        b.sphere((cx, cy + 0.36, r + 0.05), 0.24, serpent_m, scale=(1, 1.2, 0.8), subdiv=1)
+                        for sx in (-1, 1):
+                            b.sphere((cx + sx * 0.16, cy + 0.3, r + 0.22), 0.06, serpent_eye, subdiv=1)
+                    obj = b.build()
+                else:
+                    axis = self.door_axis(x, y)
+                    hgt = 1.35
+                    # The frame stays in the world; the slab is the object that opens.
+                    for s in (-1, 1):
+                        if axis == 'x':
+                            props.box((cx + s * 0.42, cy, hgt / 2), (0.14, 0.26, hgt), frame, bevel=0.03)
+                        else:
+                            props.box((cx, cy + s * 0.42, hgt / 2), (0.26, 0.14, hgt), frame, bevel=0.03)
+                    if axis == 'x':
+                        props.box((cx, cy, hgt + 0.08), (1.0, 0.3, 0.18), frame, bevel=0.04)
+                        b.box((cx, cy, (hgt - 0.1) / 2), (0.74, 0.1, hgt - 0.1), door_m, bevel=0.03)
+                        b.sphere((cx + 0.22, cy - 0.07, 0.62), 0.05, knob, subdiv=1)
+                    else:
+                        props.box((cx, cy, hgt + 0.08), (0.3, 1.0, 0.18), frame, bevel=0.04)
+                        b.box((cx, cy, (hgt - 0.1) / 2), (0.1, 0.74, hgt - 0.1), door_m, bevel=0.03)
+                        b.sphere((cx - 0.07, cy + 0.22, 0.62), 0.05, knob, subdiv=1)
+                    obj = b.build()
+                if obj:
+                    objs.append(obj)
+        return objs
+
+    def build_gates(self, props):
+        p = self.p
+        objs = []
+        pillar = material('pillar', shade(p['wall'], 0.85))
+        bars = material('bars', shade(p['wall'], 0.5), rough=0.4, metal=0.5)
+        for e in self.entities:
+            if e['kind'] != 'gate':
+                continue
+            for i, (x, y) in enumerate(e['tiles']):
+                cx, cy, _ = tile_pos(x, y)
+                axis = self.door_axis(x, y)
+                hgt = 1.5
+                for s in (-1, 1):
+                    if axis == 'x':
+                        props.box((cx + s * 0.44, cy, hgt / 2), (0.2, 0.36, hgt), pillar, bevel=0.05)
+                        props.box((cx + s * 0.44, cy, hgt + 0.08), (0.3, 0.46, 0.16), pillar, bevel=0.04)
+                    else:
+                        props.box((cx, cy + s * 0.44, hgt / 2), (0.36, 0.2, hgt), pillar, bevel=0.05)
+                        props.box((cx, cy + s * 0.44, hgt + 0.08), (0.46, 0.3, 0.16), pillar, bevel=0.04)
+                b = Builder(f"gate:{e['flag']}:{i}")
+                for k in range(5):
+                    o = -0.3 + k * 0.15
+                    if axis == 'x':
+                        b.cylinder((cx + o, cy, hgt / 2 - 0.1), 0.03, hgt - 0.2, bars, segments=6)
+                    else:
+                        b.cylinder((cx, cy + o, hgt / 2 - 0.1), 0.03, hgt - 0.2, bars, segments=6)
+                if axis == 'x':
+                    b.box((cx, cy, hgt - 0.25), (0.7, 0.08, 0.08), bars, bevel=0.01)
+                    b.box((cx, cy, 0.15), (0.7, 0.08, 0.08), bars, bevel=0.01)
+                else:
+                    b.box((cx, cy, hgt - 0.25), (0.08, 0.7, 0.08), bars, bevel=0.01)
+                    b.box((cx, cy, 0.15), (0.08, 0.7, 0.08), bars, bevel=0.01)
+                objs.append(b.build())
+        return objs
+
+    def build_bench(self, props):
+        p = self.p
+        for e in self.entities:
+            if e['kind'] != 'practice':
+                continue
+            x, y = e['tile']
+            ax, ay = e['at']
+            cx, cy, _ = tile_pos(x, y)
+            wood = material('bench', p['bridge'], rough=0.7)
+            dark = material('bench-dark', shade(p['bridge'], 0.6))
+            lamp = material('lamp', p['accent'], emission=p['accent'], rough=0.3)
+            b = Builder('bench')
+            # The seat faces the standing tile.
+            along_x = ay != y
+            if along_x:
+                b.box((cx, cy, 0.42), (0.9, 0.36, 0.08), wood, bevel=0.02)
+                b.box((cx, cy + (0.14 if ay > y else -0.14), 0.62), (0.9, 0.06, 0.3), wood, bevel=0.02)
+                for s in (-1, 1):
+                    b.box((cx + s * 0.36, cy, 0.2), (0.08, 0.3, 0.4), dark, bevel=0.01)
+            else:
+                b.box((cx, cy, 0.42), (0.36, 0.9, 0.08), wood, bevel=0.02)
+                b.box((cx + (0.14 if ax > x else -0.14), cy, 0.62), (0.06, 0.9, 0.3), wood, bevel=0.02)
+                for s in (-1, 1):
+                    b.box((cx, cy + s * 0.36, 0.2), (0.3, 0.08, 0.4), dark, bevel=0.01)
+            obj = b.build()
+            # A lantern post beside it so the bench reads from afar.
+            lx, ly = cx + (0.0 if along_x else 0.0) + (0.62 if along_x else 0.0), cy + (0.0 if along_x else 0.62)
+            props.cylinder((lx, ly, 0.6), 0.04, 1.2, dark, segments=6)
+            props.box((lx, ly, 1.3), (0.2, 0.2, 0.26), lamp, bevel=0.04)
+            props.box((lx, ly, 1.46), (0.26, 0.26, 0.06), dark, bevel=0.02)
+            return obj
+        return None
+
+    def build_exits(self, props):
+        p = self.p
+        stone = material('pillar', shade(p['wall'], 0.85))
+        lamp = material('lamp', p['accent'], emission=p['accent'], rough=0.3)
+        for e in self.entities:
+            if e['kind'] != 'exit':
+                continue
+            x, y = e['tiles'][0]
+            cx, cy, _ = tile_pos(x, y)
+            axis = self.door_axis(x, y)
+            # Two low waymarkers with a lit cap at either side of the way out.
+            for s in (-1, 1):
+                if axis == 'x':
+                    px, py = cx + s * 0.46, cy
+                else:
+                    px, py = cx, cy + s * 0.46
+                props.box((px, py, 0.3), (0.16, 0.16, 0.6), stone, bevel=0.03)
+                props.box((px, py, 0.64), (0.12, 0.12, 0.08), lamp, bevel=0.02)
+
+    def decorate(self, props):
+        """Small rocks and grass tufts on open ground, hashed per tile so every build is the same."""
+        p = self.p
+        rock = material('rock', shade(p['wall'], 1.05))
+        tuft = material('tuft', shade(p['tree'], 1.15))
+        for y in range(self.h):
+            for x in range(self.w):
+                if self.at(x, y) != GROUND or (x, y) in self.door_tiles or (x, y) in self.gate_tiles:
+                    continue
+                k = hash2(x, y, 11)
+                cx, cy, _ = tile_pos(x, y)
+                ox = (hash2(x, y, 12) - 0.5) * 0.6
+                oy = (hash2(x, y, 13) - 0.5) * 0.6
+                if k < 0.045:
+                    r = 0.08 + 0.1 * hash2(x, y, 14)
+                    props.sphere((cx + ox, cy + oy, r * 0.5), r, rock, scale=(1.3, 1, 0.7), subdiv=1)
+                elif k < 0.13:
+                    for i in range(3):
+                        a = i * 2.1 + hash2(x, y, 15 + i) * 2
+                        props.cylinder((cx + ox + math.cos(a) * 0.05, cy + oy + math.sin(a) * 0.05, 0.09), 0.025, 0.18, tuft, segments=4, radius2=0.0)
+
+
+def clear_scene():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    for m in list(bpy.data.materials):
+        bpy.data.materials.remove(m)
+    _materials.clear()
+
+
+def build_area(area, palette, out_dir):
+    clear_scene()
+    a = Area(area, palette)
+    a.build_ground()
+    a.build_water()
+    a.build_walls()
+    a.build_trees()
+    a.build_bridges()
+    props = Builder('props')
+    a.build_doors(props)
+    a.build_gates(props)
+    a.build_bench(props)
+    a.build_exits(props)
+    a.decorate(props)
+    props.build()
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{area['id']}.glb")
+    bpy.ops.export_scene.gltf(
+        filepath=path,
+        export_format='GLB',
+        export_apply=True,
+        export_yup=True,
+        export_materials='EXPORT',
+        export_normals=True,
+        export_vertex_color='ACTIVE',
+        export_animations=False,
+        export_skins=False,
+        export_cameras=False,
+        export_lights=False,
+    )
+    size = os.path.getsize(path)
+    print(f"wrote {path} ({size // 1024} KB), {a.w}x{a.h} tiles, {len(a.entities)} entities")
+
+
+def main():
+    argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--area', action='append', default=[])
+    ap.add_argument('--all', action='store_true')
+    ap.add_argument('--out', default=os.path.join(ROOT, 'public', 'world'))
+    args = ap.parse_args(argv)
+    with open(AREAS_TS) as f:
+        areas = parse_areas(f.read())
+    with open(PALETTE_TS) as f:
+        palettes = parse_palettes(f.read())
+    ids = list(areas) if args.all or not args.area else args.area
+    for i in ids:
+        area = areas[i]
+        build_area(area, palettes[area['palette']], args.out)
+
+
+if __name__ == '__main__':
+    main()
