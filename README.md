@@ -55,6 +55,7 @@ from another machine. The mic starts on a click.
   [outDir] [url]` takes the shots behind `docs/playtest-2026-11-03.md` and measures the chord demo's peak level.
   `python3 scripts/doors.py` lists every door and gate with the facing the generator gives it (no
   Blender needed) and `scripts/doorshots.sh [outDir] [url]` screenshots each one from the passage side.
+  `node scripts/bootshot.mjs [url]` checks the page's own loader (index.html) on a throttled connection.
 - `scripts/blender/build.sh [area ...]`: rebuilds the world glbs (`build_area.py`) and the
   placeholder mannequin (`build_mannequin.py`) with headless Blender; `build_sky.py` renders the
   skies. Blender 4.x is expected at `~/.local/opt/blender/blender` (or `$BLENDER`).

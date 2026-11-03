@@ -59,6 +59,8 @@ export class App {
 
   async start(startAt: WorldStart): Promise<void> {
     this.overlays.hud.hide();
+    // The page's own loader (index.html) has done its job once the title is up.
+    document.getElementById('boot')?.remove();
     this.title.show(startAt, (mode, at) => {
       progress.inputMode = mode;
       if (!progress.startedAt) progress.startedAt = Date.now();
