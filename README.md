@@ -51,7 +51,8 @@ from another machine. The mic starts on a click.
   `--progress json` seeds saved progress (to see an area in colour), `--gpu` renders on the GPU with
   vsync off for frame-rate measurements. `node scripts/mapshots.mjs [url] [outDir] [prefix] [area ...]`
   shoots the kingdom map at desktop and phone sizes; `scripts/areashots.sh <outDir> [url]` takes
-  fixed-viewpoint shots of Tonic Town and the Jazz Quarter, grey and in colour.
+  fixed-viewpoint shots of Tonic Town and the Jazz Quarter, grey and in colour; `scripts/playshots.sh
+  [outDir] [url]` takes the shots behind `docs/playtest-2026-11-03.md` and measures the chord demo's peak level.
 - `scripts/blender/build.sh [area ...]`: rebuilds the world glbs (`build_area.py`) and the
   placeholder mannequin (`build_mannequin.py`) with headless Blender; `build_sky.py` renders the
   skies. Blender 4.x is expected at `~/.local/opt/blender/blender` (or `$BLENDER`).
