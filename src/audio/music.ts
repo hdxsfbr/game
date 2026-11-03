@@ -150,6 +150,9 @@ export class MusicPlayer {
   private nextTime = 0;
   private life = 0;
   private paused = false;
+  /** A short lift in level after a door opens; eases back by itself. */
+  private boost = 1;
+  private boostTimer: number | null = null;
 
   /** Start (or switch to) the music for an area. Restarts from the top only when the track changes. */
   play(areaId: string, finished = false): void {
@@ -187,10 +190,22 @@ export class MusicPlayer {
     this.applyGain();
   }
 
+  /** Swell for a few seconds, then settle back. Called when a door opens, after the music returns. */
+  swell(amount = 1.5, ms = 3000): void {
+    this.boost = amount;
+    this.applyGain();
+    if (this.boostTimer !== null) window.clearTimeout(this.boostTimer);
+    this.boostTimer = window.setTimeout(() => {
+      this.boost = 1;
+      this.boostTimer = null;
+      this.applyGain();
+    }, ms);
+  }
+
   private applyGain(): void {
     const engine = AudioEngine.get();
-    const target = this.paused || !this.track ? 0 : 0.55 + 0.45 * this.life;
-    engine.music.gain.setTargetAtTime(target, engine.now, this.paused ? 0.15 : 0.6);
+    const target = this.paused || !this.track ? 0 : (0.55 + 0.45 * this.life) * this.boost;
+    engine.music.gain.setTargetAtTime(target, engine.now, this.paused ? 0.15 : this.boost > 1 ? 0.3 : 0.9);
   }
 
   private tick(): void {

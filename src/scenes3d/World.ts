@@ -36,6 +36,7 @@ import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
 import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec } from '../world/puzzles';
 import { LifeMap, LifePlugin, WaterPlugin } from './colour';
+import { burst } from './fx';
 import { Grid } from './grid';
 import { SkyDome } from './sky';
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline';
@@ -153,6 +154,12 @@ export class World {
   /** Singing an opened door again: no voice lost or gained, nothing recorded. */
   private resing = false;
   private practiceRing: Mesh | null = null;
+  /** A door the camera pushes in on for a moment, and until when. */
+  private focus: { x: number; z: number; until: number } | null = null;
+  /** The singer keeps singing until this time (after a door opens, during the finale). */
+  private celebrateUntil = 0;
+  /** The finale walks the singer to centre stage. */
+  private walkTo: { x: number; z: number } | null = null;
   private practice: PracticeDef | null = null;
   private fragment: Mesh | null = null;
   private fragmentT = 0;
@@ -509,6 +516,15 @@ export class World {
 
   private placeCamera(k: number): void {
     const target = this.player.root.position.add(CAM_OFFSET).addInPlace(this.lookAhead);
+    if (this.focus) {
+      // Push in toward the door: the target slides halfway to it and the camera comes a little closer.
+      const t = Math.max(0, Math.min(1, (this.focus.until - performance.now()) / 1600));
+      const w = Math.sin(Math.min(1, t * 1.6) * Math.PI / 2) * 0.5;
+      target.x += (this.focus.x - this.player.root.position.x) * w;
+      target.z += (this.focus.z - this.player.root.position.z) * w;
+      target.subtractInPlace(CAM_OFFSET.scale(0.22 * w));
+      if (t <= 0) this.focus = null;
+    }
     this.camPos.addInPlace(target.subtract(this.camPos).scale(k));
     const jitter = performance.now() < this.shakeUntil ? new Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, 0) : Vector3.Zero();
     this.camera.position.copyFrom(this.camPos).addInPlace(jitter);
@@ -754,7 +770,11 @@ export class World {
     return this.wait(step.mode === 'melody' ? 250 : step.spec.kind === 'resolve' ? 1500 : 900);
   }
 
-  /** The whole song with every layer, then the kingdom's colour and the results. */
+  /**
+   * The finale. The band plays the whole song with every layer while the stage lights come on bar by bar,
+   * the singer walks to centre stage and holds the last note, fireworks go up over the stage, colour
+   * floods the kingdom, and the results follow.
+   */
   private finishKingdom(d: DoorView): void {
     const q = this.runner!.question;
     const engine = AudioEngine.get();
@@ -763,18 +783,52 @@ export class World {
     q.steps.forEach((st, i) => playSongLayers(i, st, t0 + i * beat));
     const last = q.steps[q.steps.length - 1];
     const tEnd = t0 + q.steps.length * beat;
-    playChord([last.refMidi - 24, last.refMidi - 12, last.refMidi + 4, last.refMidi + 7, last.refMidi + 12], { timbre: 'pad', at: tEnd, duration: 2.5, gain: 0.8 });
+    playChord([last.refMidi - 24, last.refMidi - 12, last.refMidi + 4, last.refMidi + 7, last.refMidi + 12], { timbre: 'pad', at: tEnd, duration: 3.5, gain: 0.8 });
     playNote(last.refMidi + 12, { timbre: 'bell', at: tEnd, duration: 1.5, gain: 0.5 });
+    // A rising fanfare of bells over the fireworks.
+    [0, 4, 7, 12, 16, 19, 24].forEach((o, i) => playNote(last.refMidi + o, { timbre: 'bell', at: tEnd + 1.2 + i * 0.16, duration: 0.6, gain: 0.35 }));
     progress.finished = true;
     progress.finishedAt = Date.now();
     saveProgress(progress);
     this.endPuzzle(true);
     this.toast('Three fragments, one song. Listen: the kingdom answers.', 6000);
     const t = d.def.tiles[0];
-    this.later((tEnd - engine.now) * 1000 - 400, () => this.bloomAt(t.x, t.y, 1e9));
-    this.later((tEnd - engine.now) * 1000 + 2600, () => {
+    const msTo = (time: number) => Math.max(0, (time - engine.now) * 1000);
+    // Centre stage is the middle of the floor below the door; the singer walks there as the band starts.
+    this.walkTo = { x: t.x + 0.5, z: t.y + 1.7 };
+    this.celebrateUntil = performance.now() + msTo(tEnd) + 9000;
+    // Stage lights, one per bar, in the kingdom's colours, with a spark where each comes on.
+    const colours = [PALETTES.valley.accent, PALETTES.town.accent, PALETTES.jazz.accent, this.palette.accent];
+    colours.forEach((hex, bar) => {
+      this.later(msTo(t0 + bar * 4 * beat), () => {
+        const x = t.x + 0.5 + (bar - 1.5) * 2.2;
+        const pos = new Vector3(x, 2.6, t.y + 1.2);
+        const light = new PointLight(`stage-light-${bar}`, pos, this.scene);
+        light.diffuse = hexToColor3(hex);
+        light.intensity = 0;
+        light.range = 9;
+        const start = performance.now();
+        const fade = () => {
+          const k = Math.min(1, (performance.now() - start) / 600);
+          light.intensity = 1.6 * k;
+          if (k < 1 && !this.disposed) requestAnimationFrame(fade);
+        };
+        fade();
+        burst(this.scene, pos, hex, { count: 50, life: 0.9, speed: 1.2, gravity: 1.5, size: 0.1 });
+      });
+    });
+    // Fireworks over the stage, from the last note until the fade.
+    const firework = () => {
+      const hex = colours[Math.floor(Math.random() * colours.length)];
+      const pos = new Vector3(t.x + 0.5 + (Math.random() - 0.5) * 9, 3.5 + Math.random() * 2.5, t.y + 0.5 + Math.random() * 5);
+      burst(this.scene, pos, hex, { count: 160, life: 1.6, speed: 3.2, gravity: 2.5, size: 0.16, color2: 0xfff2c0 });
+      playNote(84 + Math.floor(Math.random() * 12), { timbre: 'bell', duration: 0.3, gain: 0.12 });
+    };
+    for (let i = 0; i < 12; i++) this.later(msTo(tEnd) + 200 + i * 650 + Math.random() * 200, firework);
+    this.later(msTo(tEnd) - 400, () => this.bloomAt(t.x, t.y, 1e9));
+    this.later(msTo(tEnd) + 9000, () => {
       this.transitioning = true;
-      void this.hooks.fade(true, 700).then(() => this.hooks.onFinished());
+      void this.hooks.fade(true, 900).then(() => this.hooks.onFinished());
     });
   }
 
@@ -850,12 +904,26 @@ export class World {
     }
     this.bloomAt(t0.x, t0.y, this.areaComplete() ? 1e9 : 14);
     this.later(700, () => d.ring && this.setRing(d.ring, true));
+    this.doorMoment(d);
     doorOpen(q.steps[0].refMidi);
     this.later(700, () => playSequence(q.steps.map((s) => s.targetMidi).concat([q.steps[0].targetMidi + 12]), { timbre: 'bell', duration: 0.3, gap: 0.14, gain: 0.45 }));
     this.endPuzzle(true);
     const starText = '  ' + '★'.repeat(stars) + '☆'.repeat(3 - stars);
     this.toast((d.def.tiles.length > 1 ? 'The serpent lies down. A bridge.' : d.def.puzzle.id === 'jazz-boss' ? 'The band plays the whole set. The door is yours.' : 'The way opens.') + starText, 4000);
     saveProgress(progress);
+  }
+
+  /** The moment a door opens: a shower of sparks from the frame, the camera leans in, the singer holds the note, the music swells. */
+  private doorMoment(d: DoorView): void {
+    const accent = this.palette.accent;
+    const now = performance.now();
+    const t = d.def.tiles[Math.floor(d.def.tiles.length / 2)];
+    this.focus = { x: t.x + 0.5, z: t.y + 0.5, until: now + 1600 };
+    this.celebrateUntil = now + 1900;
+    const at = new Vector3(t.x + 0.5, 1.2, t.y + 0.5);
+    burst(this.scene, at, accent, { count: 140, life: 1.4, speed: 2.2, gravity: 3, lift: new Vector3(0, 3.5, 0), color2: 0xfff2c0 });
+    this.later(350, () => burst(this.scene, at.add(new Vector3(0, 0.4, 0)), accent, { count: 60, life: 1.0, speed: 1.6, gravity: 2, lift: new Vector3(0, 2.5, 0), size: 0.1 }));
+    this.later(1900, () => MusicPlayer.get().swell(1.5, 3200));
   }
 
   private endPuzzle(solved: boolean): void {
@@ -986,7 +1054,25 @@ export class World {
       this.checkExit();
     }
     this.player.setMoving(moving);
-    this.player.setSinging(!!this.runner && this.runner.phase === 'listening');
+    this.player.setSinging((!!this.runner && this.runner.phase === 'listening') || timeMs < this.celebrateUntil);
+    if (this.walkTo && !moving) {
+      // The finale: the singer walks to centre stage on their own.
+      const ddx = this.walkTo.x - this.player.x;
+      const ddz = this.walkTo.z - this.player.z;
+      const dist = Math.hypot(ddx, ddz);
+      if (dist < 0.08) {
+        this.walkTo = null;
+        this.player.face(0, 1); // to the audience
+      } else {
+        const step = Math.min(dist, WALK_SPEED * 0.8 * dt);
+        this.player.setPosition(this.player.x + (ddx / dist) * step, this.player.z + (ddz / dist) * step);
+        this.player.face(ddx, ddz);
+        this.player.setMoving(true);
+        if (this.player.update(dt, timeMs)) footstep();
+        this.placeCamera(Math.min(1, dt * 6));
+        return;
+      }
+    }
     if (this.player.update(dt, timeMs)) footstep();
 
     // What Space would do here.

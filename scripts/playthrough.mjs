@@ -186,6 +186,8 @@ async function solveDoor(id, { wrong = 0, shotName = null, click = false } = {})
   }
   s = await waitFor((st) => st.solved.includes(id), 15000, `${id} solved`);
   console.log('solved', id);
+  // The moment after: sparks and the camera's push toward the door.
+  if (shotName) { await sleep(550); await shot(`${shotName}-open`); }
   return s;
 }
 
@@ -297,7 +299,8 @@ await shot('19-stage');
 await solveDoor('stage-song', { wrong: 1, shotName: '20-song' });
 await sleep(2500);
 await shot('21-kingdom');
-for (let i = 0; i < 60; i++) { if (await page.evaluate(() => window.__lkResults === true)) break; await sleep(250); }
+// The finale runs about sixteen seconds from the last note: lights, fireworks, then the results.
+for (let i = 0; i < 100; i++) { if (await page.evaluate(() => window.__lkResults === true)) break; await sleep(250); }
 if (!(await page.evaluate(() => window.__lkResults === true))) throw new Error('results screen never appeared');
 await sleep(900);
 await shot('22-results');

@@ -63,6 +63,7 @@ export class Results {
       const score = el('div', 'results-score', `${m.name}  ·  ★ ${stars} of ${doors.length * 3}  ·  ${misses} miss${misses === 1 ? '' : 'es'}`);
       score.style.color = m.color;
       row.append(dot, text, score);
+      row.style.animationDelay = `${0.5 + ROWS.indexOf(r) * 0.35}s`;
       box.append(row);
     }
     const btns = el('div', 'results-btns');
@@ -74,6 +75,7 @@ export class Results {
     box.append(btns);
     this.root.append(box);
     this.root.classList.remove('hidden');
+    this.confetti();
     setTimeout(() => playSequence([60, 64, 67, 72, 76], { timbre: 'bell', duration: 0.35, gap: 0.16, gain: 0.4 }), 300);
     (window as unknown as { __lkResults: boolean }).__lkResults = true;
   }
@@ -81,5 +83,43 @@ export class Results {
   hide(): void {
     this.root.classList.add('hidden');
     (window as unknown as { __lkResults: boolean }).__lkResults = false;
+  }
+
+  /** Paper falling over the results for a few seconds, in the kingdom's colours. */
+  private confetti(): void {
+    const canvas = el('canvas', 'results-confetti') as HTMLCanvasElement;
+    this.root.append(canvas);
+    const g = canvas.getContext('2d');
+    if (!g) return;
+    const colours = ['#f2c46d', '#e06c75', '#9ad1c8', '#f58ab8', '#8fd18a', '#f6efe2'];
+    const n = 160;
+    const bits = Array.from({ length: n }, (_, i) => ({ x: Math.random(), y: -Math.random() * 1.2, vy: 0.08 + Math.random() * 0.12, vx: (Math.random() - 0.5) * 0.04, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 4, w: 6 + Math.random() * 6, h: 3 + Math.random() * 4, c: colours[i % colours.length] }));
+    const t0 = performance.now();
+    let last = t0;
+    const frame = (now: number) => {
+      if (this.root.classList.contains('hidden')) return canvas.remove();
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const W = (canvas.width = canvas.clientWidth);
+      const H = (canvas.height = canvas.clientHeight);
+      g.clearRect(0, 0, W, H);
+      const age = (now - t0) / 1000;
+      g.globalAlpha = Math.max(0, Math.min(1, 9 - age));
+      for (const b of bits) {
+        b.y += b.vy * dt;
+        b.x += b.vx * dt + Math.sin(now / 400 + b.r) * 0.0004;
+        b.r += b.vr * dt;
+        if (b.y > 1.1 && age < 6) b.y = -0.1;
+        g.save();
+        g.translate(b.x * W, b.y * H);
+        g.rotate(b.r);
+        g.fillStyle = b.c;
+        g.fillRect(-b.w / 2, -b.h / 2, b.w, Math.abs(Math.cos(b.r * 1.3)) * b.h + 1);
+        g.restore();
+      }
+      if (age < 10) requestAnimationFrame(frame);
+      else canvas.remove();
+    };
+    requestAnimationFrame(frame);
   }
 }

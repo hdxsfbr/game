@@ -730,6 +730,35 @@ body {
   margin: 0 0 12px;
   text-align: left;
 }
+.results-row {
+  animation: results-in 0.6s ease-out both;
+}
+.results-box h1,
+.results-sub,
+.results-btns {
+  animation: results-in 0.8s ease-out both;
+}
+.results-btns {
+  animation-delay: 2.2s;
+}
+@keyframes results-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.results-confetti {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .results-medal {
   width: 24px;
   height: 24px;
