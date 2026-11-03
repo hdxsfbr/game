@@ -85,8 +85,8 @@ export class PuzzlePanel {
 
   private buildPiano(): void {
     let wx = 0;
-    const ww = 34;
-    const bw = 20;
+    const ww = 40;
+    const bw = 24;
     for (let m = PIANO_LOW; m <= PIANO_HIGH; m++) {
       const black = BLACK.has(m % 12);
       const b = el('button', 'key ' + (black ? 'black' : 'white'), '', { type: 'button', 'data-key': String(m) });

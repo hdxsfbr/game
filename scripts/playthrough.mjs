@@ -20,7 +20,14 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error' && !/GL Driver|WebGL|ERR_CERT/.test(m.text())) errors.push(m.text()); });
+// A navigation aborts the previous page's pending loads; those failures are not the game's.
+let navigatedAt = 0;
+page.on('console', (m) => {
+  if (m.type() !== 'error' || /GL Driver|WebGL|ERR_CERT/.test(m.text())) return;
+  if (/Failed to load resource/.test(m.text()) && Date.now() - navigatedAt < 2500) return;
+  errors.push(m.text());
+});
+page.on('framenavigated', () => { navigatedAt = Date.now(); });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const shot = (name) => page.screenshot({ path: `${out}/${name}.png` });

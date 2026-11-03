@@ -6,8 +6,12 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
 import { toStandard } from './materials';
+import { Rig } from './Rig';
 
 export type Facing = 'north' | 'south' | 'east' | 'west';
+
+const TRIPO_SCALE = 1.3;
+const TRIPO_FACE = Math.PI;
 
 /**
  * The player: a node at the feet, driven in tile units. Until the Tripo character arrives this is
@@ -22,6 +26,10 @@ export class Player {
   private targetYaw = Math.PI;
   private phase = 0;
   private moving = false;
+  private blend = 0;
+  rig: Rig | null = null;
+  /** Yaw to add so the model's front faces -Z like the mannequin. */
+  private faceOffset = 0;
   private limbs: Partial<Record<'Hips' | 'Torso' | 'Head' | 'ArmL' | 'ArmR' | 'LegL' | 'LegR', TransformNode>> = {};
   private rest = new Map<TransformNode, Vector3>();
 
@@ -31,7 +39,15 @@ export class Player {
 
   static async load(scene: Scene, matCache: Map<Material, StandardMaterial>): Promise<Player> {
     const p = new Player(scene);
-    const container = await LoadAssetContainerAsync('character/mannequin.glb', scene);
+    // The Tripo singer (rigged, no clips, driven by Rig); the Blender mannequin if it is missing.
+    let container: Awaited<ReturnType<typeof LoadAssetContainerAsync>> | null = null;
+    try {
+      container = await LoadAssetContainerAsync('character/listening-kingdom-singer.glb', scene);
+    } catch {
+      container = null;
+    }
+    const tripo = !!container;
+    if (!container) container = await LoadAssetContainerAsync('character/mannequin.glb', scene);
     container.addAllToScene();
     const top = container.rootNodes[0] as TransformNode;
     top.parent = p.root;
@@ -39,6 +55,13 @@ export class Player {
       toStandard(m, scene, matCache);
       m.isPickable = false;
       p.meshes.push(m);
+    }
+    if (tripo) {
+      // About a tile tall, facing the way the mannequin does.
+      top.scaling.setAll(TRIPO_SCALE);
+      p.faceOffset = TRIPO_FACE;
+      p.rig = new Rig(scene);
+      if (!p.rig.ok) p.rig = null;
     }
     for (const n of container.transformNodes) {
       const name = n.name as keyof typeof p.limbs;
@@ -78,11 +101,20 @@ export class Player {
     let d = this.targetYaw - this.yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.yaw += d * Math.min(1, dt * 14);
-    this.root.rotation.y = this.yaw;
+    this.root.rotation.y = this.yaw + this.faceOffset;
     this.root.position.set(this.x, 0, this.z);
 
     const L = this.limbs;
     let footfall = false;
+    if (this.rig) {
+      const before = Math.floor(this.phase / Math.PI);
+      if (this.moving) this.phase += dt * 9.5;
+      footfall = this.moving && Math.floor(this.phase / Math.PI) !== before;
+      this.blend += ((this.moving ? 1 : 0) - this.blend) * Math.min(1, dt * 8);
+      if (!this.moving && this.blend < 0.02) this.phase = 0;
+      this.rig.pose(this.phase, this.blend, timeMs);
+      return footfall;
+    }
     if (this.moving) {
       const before = Math.floor(this.phase / Math.PI);
       this.phase += dt * 11;

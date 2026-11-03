@@ -10,6 +10,8 @@ import type { Scene } from '@babylonjs/core/scene';
 export class Rig {
   private joints = new Map<string, { node: TransformNode; rest: Quaternion }>();
   private hipsRest = new Vector3();
+  /** The arms hang from the T-pose: about the upper arm's x axis (its z swings the arm forward). */
+  armDrop = -1.25;
 
   constructor(scene: Scene, prefix = 'mixamorig:') {
     const names = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm', 'LeftShoulder', 'RightShoulder'];
@@ -41,17 +43,18 @@ export class Rig {
     const c = Math.cos(phase) * blend;
     const breathe = Math.sin(timeMs / 700) * 0.015;
     // Legs swing from the hip and bend at the knee on the way forward.
-    this.set('LeftUpLeg', -s * 0.65);
-    this.set('RightUpLeg', s * 0.65);
+    this.set('LeftUpLeg', -s * 0.85);
+    this.set('RightUpLeg', s * 0.85);
     this.set('LeftLeg', Math.max(0, -c) * 0.9 * blend + 0.05 * blend);
     this.set('RightLeg', Math.max(0, c) * 0.9 * blend + 0.05 * blend);
     this.set('LeftFoot', s * 0.2);
     this.set('RightFoot', -s * 0.2);
     // Arms swing opposite the legs, elbows slightly bent.
-    this.set('LeftArm', s * 0.45, 0, 0);
-    this.set('RightArm', -s * 0.45, 0, 0);
-    this.set('LeftForeArm', -0.25 * blend - 0.1, 0, 0);
-    this.set('RightForeArm', -0.25 * blend - 0.1, 0, 0);
+    // Mirrored joints share the drop sign and take opposite swings.
+    this.set('LeftArm', this.armDrop, 0, s * 0.75);
+    this.set('RightArm', this.armDrop, 0, -s * 0.75);
+    this.set('LeftForeArm', 0, 0, 0.3 * blend + 0.15);
+    this.set('RightForeArm', 0, 0, 0.3 * blend + 0.15);
     // The torso leans into the walk and sways; the head stays level.
     this.set('Spine', 0.06 * blend + breathe, c * 0.05, s * 0.04);
     this.set('Spine1', breathe * 0.5, 0, 0);

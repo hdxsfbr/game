@@ -21,10 +21,16 @@ page.on('pageerror', (e) => console.log('pageerror', String(e)));
 page.on('console', (m) => { if (m.type() === 'error') console.log('console.error', m.text()); });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 await page.goto(`${base}/?reset=1&scene=world&area=${area}`, { waitUntil: 'load' });
-await sleep(600);
+await page.waitForSelector('#btn-play', { timeout: 15000 });
 await page.click('#btn-play');
 const t0 = Date.now();
 while (Date.now() - t0 < 30000 && !(await page.evaluate(() => !!(window.__lk && window.__lk.ready)))) await sleep(200);
+await sleep(700);
+// The story card shown on first arrival: Space closes it.
+if (await page.evaluate(() => !!(window.__lk.storyCard && window.__lk.storyCard.visible))) {
+  await page.keyboard.press('Space');
+  await sleep(600);
+}
 const info = await page.evaluate(() => {
   const w = window.__lk;
   const s = w.scene;

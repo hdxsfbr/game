@@ -44,8 +44,8 @@ import { Player } from './Player';
 import { listeningStatus, playPrompt, playSongLayers } from './prompts';
 
 /** Camera offset from the player, in tiles: high and to the south, looking north over the player's shoulder. */
-const CAM_OFFSET = new Vector3(0, 8.6, 7.6);
-const CAM_LOOK = new Vector3(0, 0.6, -0.4);
+const CAM_OFFSET = new Vector3(0, 7.6, 9.2);
+const CAM_LOOK = new Vector3(0, 0.7, -1.2);
 const WALK_SPEED = 4.7; // tiles per second, the 2D game's 150 px/s
 
 export interface WorldStart {
@@ -189,15 +189,15 @@ export class World {
     scene.clearColor = new Color4(sky.r, sky.g, sky.b, 1);
     scene.ambientColor = new Color3(0.25, 0.25, 0.28);
     scene.fogMode = Scene.FOGMODE_EXP2;
-    scene.fogDensity = 0.012;
+    scene.fogDensity = 0.014;
     scene.fogColor = sky;
 
     const hemi = new HemisphericLight('sky', new Vector3(0.1, 1, 0.2), scene);
-    hemi.intensity = 0.42;
+    hemi.intensity = 0.45;
     hemi.diffuse = new Color3(0.78, 0.82, 0.95);
     hemi.groundColor = new Color3(0.35, 0.3, 0.28);
     this.sun = new DirectionalLight('sun', new Vector3(-0.45, -1, -0.35).normalize(), scene);
-    this.sun.intensity = 0.95;
+    this.sun.intensity = 0.92;
     this.sun.diffuse = new Color3(1, 0.93, 0.8);
     this.sun.shadowMinZ = 1;
     this.sun.shadowMaxZ = 60;
@@ -236,17 +236,18 @@ export class World {
       new LifePlugin(mat, this.lifeMap);
       if (mat.name === 'water') this.water = new WaterPlugin(mat);
     }
-    this.sky = new SkyDome(scene);
+    this.sky = new SkyDome(scene, this.area.id);
     // A warm lamp at the bench and a little bloom on everything that glows.
     for (const e of this.area.entities) {
       if (e.kind === 'practice') {
         const lamp = new PointLight('lamp', new Vector3(e.tile.x + 0.5 + 0.62, 1.3, e.tile.y + 0.5), scene);
         lamp.diffuse = hexToColor3(this.palette.accent);
-        lamp.intensity = 2.2;
-        lamp.range = 5;
+        lamp.intensity = 1.3;
+        lamp.range = 4;
       }
     }
-    this.pipeline = new DefaultRenderingPipeline('pipe', true, scene, [this.camera]);
+    this.pipeline = new DefaultRenderingPipeline('pipe', false, scene, [this.camera]);
+    this.pipeline.imageProcessingEnabled = false;
     this.pipeline.bloomEnabled = true;
     this.pipeline.bloomThreshold = 0.75;
     this.pipeline.bloomWeight = 0.3;
@@ -412,6 +413,7 @@ export class World {
     this.scene.clearColor = new Color4(sky.r, sky.g, sky.b, 1);
     this.scene.fogColor = horizon;
     this.sky.setColours(sky, horizon);
+    this.sky.setLife(this.areaLife());
   }
 
   // ---------- movement ----------
@@ -624,8 +626,12 @@ export class World {
     this.hud.setHint('');
     this.player.setMoving(false);
     if (d) {
+      // Half toward the door, half toward the camera, so the face stays in view while singing.
       const t = d.def.tiles[0];
-      this.player.face(t.x + 0.5 - this.player.x, t.y + 0.5 - this.player.z);
+      const dx = t.x + 0.5 - this.player.x;
+      const dz = t.y + 0.5 - this.player.z;
+      const len = Math.hypot(dx, dz) || 1;
+      this.player.face(dx / len + 0.4 * Math.sign(dx || 1), dz / len + 1.0);
     }
     void runner.start();
   }

@@ -19,9 +19,9 @@ OUT = os.path.join(ROOT, 'public', 'sky')
 
 # sun elevation (deg), sun rotation (deg), sun intensity, air, dust, ozone, tint rgb, tint strength
 SKIES = {
-    'hub': dict(elevation=22, rotation=200, intensity=0.6, air=1.2, dust=1.6, ozone=1.0, tint=(1.0, 0.86, 0.62)),
-    'valley': dict(elevation=48, rotation=160, intensity=0.5, air=1.0, dust=0.6, ozone=1.4, tint=(0.82, 0.95, 1.0)),
-    'town': dict(elevation=12, rotation=240, intensity=0.7, air=1.4, dust=2.4, ozone=0.8, tint=(1.0, 0.78, 0.62)),
+    'hub': dict(elevation=22, rotation=200, intensity=0.6, air=1.0, dust=0.5, ozone=1.0, tint=(1.0, 0.86, 0.62)),
+    'valley': dict(elevation=48, rotation=160, intensity=0.5, air=1.0, dust=0.2, ozone=1.4, tint=(0.82, 0.95, 1.0)),
+    'town': dict(elevation=12, rotation=240, intensity=0.7, air=1.2, dust=0.9, ozone=0.8, tint=(1.0, 0.78, 0.62)),
     'jazz': dict(elevation=-3, rotation=120, intensity=0.4, air=1.6, dust=1.0, ozone=3.0, tint=(0.62, 0.45, 0.95)),
     'stage': dict(elevation=-8, rotation=90, intensity=0.3, air=1.2, dust=0.4, ozone=4.0, tint=(0.38, 0.32, 0.6)),
 }

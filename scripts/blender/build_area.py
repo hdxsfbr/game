@@ -371,9 +371,9 @@ class Area:
         def colfunc(cx, cy):
             tx, ty = int(math.floor(cx)), int(math.floor(-cy))
             k = hash2(tx, ty, 3)
-            m = 0.97 + 0.06 * k
+            m = 0.96 + 0.07 * (0.5 + 0.5 * math.sin(tx * 0.9 + ty * 0.6) * 0.6 + 0.4 * (k - 0.5))
             if (tx * 7 + ty * 13) % 5 == 0:
-                return (alt_ratio[0] * m, alt_ratio[1] * m, alt_ratio[2] * m)
+                m *= 0.985
             return (m, m, m)
 
         b = Builder('ground')
@@ -416,7 +416,8 @@ class Area:
         wall = material('wall', p['wall'])
         top = material('wall-top', shade(p['wall'], 1.18))
         trim = material('wall-trim', shade(p['wall'], 0.72))
-        roof = material('roof', shade(p['accent'], 0.95), rough=0.75)
+        roof = material('roof', shade(p['accent'], 0.8), rough=0.85)
+        eave = material('eave', shade(p['wall'], 0.55))
         for (x0, y, n) in self.wall_runs():
             # Split long runs into shorter blocks of varying height so a wall reads as buildings or cliff faces.
             x = x0
@@ -429,8 +430,12 @@ class Area:
                 b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.09)
                 if self.style == 'town' and near:
                     # Tonic Town: houses with pitched terracotta roofs and lit windows toward the street.
-                    b.wedge((cx, cy, hgt + 0.24), (seg + 0.16, 1.12, 0.5), roof, axis='x')
-                    b.box((cx, cy, hgt + 0.5), (seg + 0.2, 0.08, 0.05), trim, bevel=0.01)
+                    # A dark eave under the overhang, the pitched roof, a ridge beam and a chimney.
+                    b.box((cx, cy, hgt - 0.04), (seg + 0.2, 1.16, 0.1), eave, bevel=0.02)
+                    b.wedge((cx, cy, hgt + 0.26), (seg + 0.16, 1.12, 0.52), roof, axis='x')
+                    b.box((cx, cy, hgt + 0.52), (seg + 0.2, 0.1, 0.06), trim, bevel=0.01)
+                    if hash2(x, y, 41) < 0.4:
+                        b.box((cx + (hash2(x, y, 42) - 0.5) * (seg - 0.6), cy + 0.25, hgt + 0.45), (0.22, 0.22, 0.5), trim, bevel=0.02)
                     self.windows(b, x, y, seg, hgt)
                 else:
                     # A lighter cap and a dark plinth give the block a top and a base.
@@ -634,8 +639,8 @@ class Area:
             # A lantern post beside it so the bench reads from afar.
             lx, ly = cx + (0.0 if along_x else 0.0) + (0.62 if along_x else 0.0), cy + (0.0 if along_x else 0.62)
             props.cylinder((lx, ly, 0.6), 0.04, 1.2, dark, segments=6)
-            props.box((lx, ly, 1.3), (0.2, 0.2, 0.26), lamp, bevel=0.04)
-            props.box((lx, ly, 1.46), (0.26, 0.26, 0.06), dark, bevel=0.02)
+            props.box((lx, ly, 1.26), (0.2, 0.2, 0.26), lamp, bevel=0.04)
+            props.box((lx, ly, 1.42), (0.26, 0.26, 0.06), dark, bevel=0.02)
             return obj
         return None
 
@@ -711,7 +716,8 @@ class Area:
                     continue
                 cx = x0 + n / 2
                 cy = -(y + 0.5)
-                props.box((cx, cy, 1.95), (n + 0.3, 1.3, 0.1), stand, bevel=0.02)
+                props.box((cx, cy, 1.95), (n + 0.3, 1.3, 0.18), stand, bevel=0.03)
+                props.box((cx, cy - 0.7, 1.86), (n + 0.3, 0.06, 0.3), neon, bevel=0.01)
                 for sx in (-1, 1):
                     for sy in (-1, 1):
                         props.cylinder((cx + sx * (n / 2 + 0.05), cy + sy * 0.55, 1.5), 0.04, 0.8, post, segments=6)

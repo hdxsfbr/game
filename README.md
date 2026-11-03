@@ -5,14 +5,18 @@ kingdom gone silent and grey. Every door answers only to the right note. Win you
 interval at a time: by the end you can hear intervals, scale degrees in a key, and the four jazz
 chord qualities, and you sing the kingdom's song back on the Silent Stage.
 
-Play it: https://game-production-34da.up.railway.app
+Play it: https://game-production-34da.up.railway.app (the 2D version, tag `v1-2d`).
+
+This branch is the 3D remake: the same kingdom, puzzles, voice and music, rebuilt with
+Babylon.js over a world modelled by headless Blender scripts and a rigged character from Tripo.
 
 Built for Game Week (brief in `docs/Game_Week_Assignment.pdf`). Design in `docs/design.md`, art and
 asset plan in `docs/art-plan.md`, asset provenance in `docs/assets.md`.
 
 ## How to play
 
-- Walk with the arrow keys or WASD. Press Space at a door to listen, M for the map.
+- Walk with the arrow keys or WASD. Press Space at a door to listen, M for the map. The kingdom
+  is grey until you open doors; colour spreads out from each one.
 - Answer by **singing** (microphone, headphones recommended) or by **playing**: the piano under
   every door runs from C4 to E5 and never moves. A S D F G H J K are the white keys from C, W E T
   Y U the black keys, O L P ; carry on past the top C. Press a key to hear it, Enter to answer.
@@ -40,9 +44,14 @@ from another machine. The mic starts on a click.
 - `node scripts/playthrough.mjs [url] [outDir]`: drives the whole game in headless Chrome through
   every door, going quiet and practising on the way, and fails on console errors or silent prompts.
 - `node scripts/smoke.mjs <url>`: boot, Play and the first door on a deployed build.
-- `scripts/pixellab_player.py`: the player sprite from PixelLab (token in `~/.config/agentforge/pixellab`).
+- `node scripts/screenshot3d.mjs [url] [outDir] [area] [x] [y]`: boots an area and walks a few
+  steps each way, writing screenshots. `node scripts/inspect3d.mjs [url] [area] --eval js --shot f.png`
+  dumps the scene and runs probes against it.
+- `scripts/blender/build.sh [area ...]`: rebuilds the world glbs (`build_area.py`) and the
+  placeholder mannequin (`build_mannequin.py`) with headless Blender; `build_sky.py` renders the
+  skies. Blender 4.x is expected at `~/.local/opt/blender/blender` (or `$BLENDER`).
 - `scripts/gen_cards.py`: title backdrop and story cards with local Stable Diffusion XL.
-- `node scripts/dump_textures.mjs`: dumps the code-drawn textures for review.
+- `scripts/pixellab_player.py`: the 2D player sprite from PixelLab, kept for the 2D version.
 
 ## Deploy
 
@@ -56,7 +65,12 @@ railway up --service game --detach
 
 - `src/ear/`: pitch math (pure, tested), microphone pitch detector (pitchy, McLeod method), piano keys.
 - `src/audio/`: Web Audio engine, ducking, synth, the sequenced area music, and sound effects. All audio is generated at runtime.
-- `src/world/`: areas and maps, puzzle model and runner, lessons, palettes, code-drawn textures.
-- `src/ui/`: puzzle panel with piano and ladder, map overlay, lesson overlay, story cards.
-- `src/scenes/`: title, world, results. `TunerScene` is a development tuner.
-- `public/`: generated assets (player sheet, cards). `scripts/`: generators and headless checks.
+- `src/world/`: areas and maps (the ASCII maps are the single source for both the collision grid
+  and the Blender-built scenery), puzzle model and runner, lessons, palettes.
+- `src/scenes3d/`: the Babylon.js app, the world (loading, camera, sun and shadows, doors, gates,
+  bench, fragment, exits, the puzzle flow), the player and rig, the grid collision, the colour
+  plugins (grey-to-colour life map, water, sky) and the sky dome.
+- `src/overlay/`: the HTML overlays: title, HUD, puzzle panel with piano and ladder, map, lessons,
+  story cards, results.
+- `public/world/`, `public/sky/`, `public/character/`, `public/cards/`: generated assets, see
+  `docs/assets.md`. `scripts/`: generators and headless checks.

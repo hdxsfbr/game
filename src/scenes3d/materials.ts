@@ -21,6 +21,11 @@ export function toStandard(mesh: AbstractMesh, scene: Scene, cache: Map<Material
       out.diffuseColor = src.albedoColor.toGammaSpace();
       out.emissiveColor = src.emissiveColor.toGammaSpace();
       out.alpha = src.alpha;
+      if (src.albedoTexture) {
+        out.diffuseTexture = src.albedoTexture;
+        out.diffuseColor = new Color3(1, 1, 1);
+      }
+      if (src.emissiveTexture) out.emissiveTexture = src.emissiveTexture;
       const rough = src.roughness ?? 0.8;
       out.specularColor = new Color3(0.08, 0.08, 0.08).scale(1 - rough).add(new Color3(0.02, 0.02, 0.02));
       out.specularPower = 16 + (1 - rough) * 64;
