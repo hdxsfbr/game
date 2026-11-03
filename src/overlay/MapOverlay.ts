@@ -108,7 +108,8 @@ export class MapOverlay {
       const doors = a.entities.filter((e): e is DoorDef => e.kind === 'door');
       const done = doors.filter((d) => progress.solved.includes(d.puzzle.id)).length;
       const here = id === area.id;
-      const text = doors.length ? `${a.name}  ${done}/${doors.length}` : a.name;
+      const complete = doors.length > 0 && done === doors.length;
+      const text = doors.length ? `${a.name}  ${done}/${doors.length}${complete ? '  ✓' : ''}` : a.name;
       g.font = `15px ${FONT}`;
       const w = g.measureText(text).width + 20;
       if (sx + w > width - 24 && sx > 24) {

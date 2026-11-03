@@ -7,7 +7,9 @@ import { Results } from '../overlay/Results';
 import { StoryCard } from '../overlay/StoryCard';
 import { Title } from '../overlay/Title';
 import { clearProgress, defaultProgress, progress, saveProgress } from '../state';
+import { AREAS } from '../world/areas';
 import { PALETTES } from '../world/palette';
+import { el } from '../overlay/dom';
 import { World, type Overlays, type WorldStart } from './World';
 
 /**
@@ -21,6 +23,8 @@ export class App {
   private title: Title;
   private results: Results;
   private fade: HTMLDivElement;
+  private loading: HTMLDivElement;
+  private loadingText: HTMLElement;
   private last = performance.now();
 
   constructor(
@@ -31,6 +35,13 @@ export class App {
     this.fade = document.createElement('div');
     this.fade.className = 'fade';
     ui.appendChild(this.fade);
+    // Shown over the fade while an area's world loads, so a few seconds of black never look like a crash.
+    this.loading = el('div', 'loading hidden');
+    const notes = el('div', 'loading-notes');
+    for (let i = 0; i < 5; i++) notes.append(el('i', ''));
+    this.loadingText = el('p', 'loading-text', '');
+    this.loading.append(notes, this.loadingText);
+    ui.appendChild(this.loading);
     this.overlays = {
       ui,
       hud: new Hud(ui),
@@ -61,6 +72,8 @@ export class App {
     this.results.hide();
     this.world?.dispose();
     this.world = null;
+    this.loadingText.textContent = `On the way to ${AREAS[start.area ?? progress.area ?? 'hub']?.name ?? 'the kingdom'}…`;
+    this.loading.classList.remove('hidden');
     const world = await World.create(
       this.engine,
       start,
@@ -74,6 +87,7 @@ export class App {
     this.world = world;
     this.canvas.focus();
     (window as unknown as { __lk: unknown }).__lk = world; // read by scripts/smoke.mjs and playthrough.mjs
+    this.loading.classList.add('hidden');
     await this.setFade(false, 500);
   }
 

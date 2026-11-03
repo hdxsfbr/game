@@ -12,7 +12,6 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { CreatePolyhedron } from '@babylonjs/core/Meshes/Builders/polyhedronBuilder';
-import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { AssetContainer } from '@babylonjs/core/assetContainer';
 import '@babylonjs/loaders/glTF';
@@ -84,8 +83,6 @@ interface DoorView {
   /** Meshes per tile, in the order of def.tiles. */
   tiles: AbstractMesh[][];
   solved: boolean;
-  /** The ring on the ground at the door: pulsing in the accent while closed, steadily lit once opened. */
-  ring: Mesh | null;
 }
 
 interface GateView {
@@ -153,7 +150,6 @@ export class World {
   private glowBase = new Color3(0, 0, 0);
   /** Singing an opened door again: no voice lost or gained, nothing recorded. */
   private resing = false;
-  private practiceRing: Mesh | null = null;
   /** A door the camera pushes in on for a moment, and until when. */
   private focus: { x: number; z: number; until: number } | null = null;
   /** The singer keeps singing until this time (after a door opens, during the finale). */
@@ -356,15 +352,13 @@ export class World {
           for (const t of e.tiles) this.grid.setBlocked(t.x, t.y, false);
           for (const ms of tiles) for (const m of ms) m.setEnabled(false);
         }
-        this.doors.push({ def: e, tiles, solved, ring: this.ringAt(e.tiles[0], solved) });
+        this.doors.push({ def: e, tiles, solved });
       } else if (e.kind === 'gate') {
         const tiles = e.tiles.map((_, i) => this.meshesNamed(`gate:${e.flag}:${i}`));
         this.gates.push({ def: e, tiles, open: false });
       } else if (e.kind === 'practice') {
         this.grid.setBlocked(e.tile.x, e.tile.y, true);
         this.practice = e;
-        // The bench's ring pulses like a closed door's until its drill has been done once.
-        this.practiceRing = this.ringAt(e.tile, progress.drilled.includes(e.lesson));
       } else if (e.kind === 'fragment' && !progress.solved.includes(e.id)) {
         const gem = CreatePolyhedron('fragment', { type: 1, size: 0.22 }, this.scene);
         const mat = new StandardMaterial('fragment', this.scene);
@@ -382,33 +376,6 @@ export class World {
   /** Meshes whose glTF name starts with `prefix` (a node with several materials splits into `_primitiveN` meshes). */
   meshesNamed(prefix: string): AbstractMesh[] {
     return this.scene.meshes.filter((m) => m.name === prefix || m.name.startsWith(prefix + '_primitive') || m.name.startsWith(prefix + '.'));
-  }
-
-  /**
-   * A ring on the ground at a door or bench. Closed: it shares the doors' pulsing glow, so the door reads
-   * from any angle and across a grey area. Opened (or the bench's drill done): steadily lit, the trace that stays.
-   */
-  private ringAt(t: { x: number; y: number }, opened: boolean): Mesh {
-    const ring = CreateTorus(`ring:${t.x}:${t.y}`, { diameter: 0.92, thickness: 0.1, tessellation: 28 }, this.scene);
-    ring.position.set(t.x + 0.5, 0.05, t.y + 0.5);
-    ring.isPickable = false;
-    this.setRing(ring, opened);
-    return ring;
-  }
-
-  private setRing(ring: Mesh, opened: boolean): void {
-    if (!opened && this.glow) {
-      ring.material = this.glow;
-      return;
-    }
-    let mat = this.scene.getMaterialByName('opened-ring') as StandardMaterial | null;
-    if (!mat) {
-      mat = new StandardMaterial('opened-ring', this.scene);
-      mat.diffuseColor = hexToColor3(this.palette.accent).scale(0.6);
-      mat.emissiveColor = hexToColor3(this.palette.accent).scale(0.8);
-      mat.specularColor = Color3.Black();
-    }
-    ring.material = mat;
   }
 
   // ---------- helpers ----------
@@ -873,7 +840,6 @@ export class World {
     this.endPuzzle(true);
     if (this.practice && !progress.drilled.includes(this.practice.lesson)) {
       progress.drilled.push(this.practice.lesson);
-      if (this.practiceRing) this.setRing(this.practiceRing, true);
     }
     const v = progress.voice;
     this.toast(v >= VOICE_DRILL_CAP ? `Practice done. Voice ${v} of ${VOICE_MAX}. Doors give the rest. Space: practise again.` : `Practice done. Voice ${v} of ${VOICE_MAX}. Space: practise again.`, 5000);
@@ -903,7 +869,6 @@ export class World {
       return;
     }
     this.bloomAt(t0.x, t0.y, this.areaComplete() ? 1e9 : 14);
-    this.later(700, () => d.ring && this.setRing(d.ring, true));
     this.doorMoment(d);
     doorOpen(q.steps[0].refMidi);
     this.later(700, () => playSequence(q.steps.map((s) => s.targetMidi).concat([q.steps[0].targetMidi + 12]), { timbre: 'bell', duration: 0.3, gap: 0.14, gain: 0.45 }));

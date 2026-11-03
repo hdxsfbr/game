@@ -688,13 +688,25 @@ class Area:
     # ----- doors, gates, bench
 
     def door_axis(self, x, y):
-        """'x' when the door faces north/south (something impassable to its left and right), else 'y'.
-        Water and trees count as well as walls: the Bridge of Echoes door stands between river tiles
-        and the valley's tree doors between rows of trees."""
+        """Which way a door or gate slab spans: 'x' (it faces north and south, the passage runs north-south)
+        or 'y' (it faces east and west, the passage runs east-west).
+        1. Something impassable (wall, water, tree) to the left or right: the slab spans x; above or below: y.
+        2. Otherwise an exit beside it says where the passage goes: an exit east or west means the player
+           walks east-west, so the slab spans y (the hub's gate to the quarter stands in open ground).
+        3. Otherwise the nearest impassable tile two steps away decides, and failing that the slab spans x.
+        scripts/doors.py prints the result for every door and gate."""
         blocked = (WALL, WATER, TREE)
         if self.at(x - 1, y) in blocked or self.at(x + 1, y) in blocked:
             return 'x'
         if self.at(x, y - 1) in blocked or self.at(x, y + 1) in blocked:
+            return 'y'
+        if self.at(x - 1, y) == EXIT or self.at(x + 1, y) == EXIT:
+            return 'y'
+        if self.at(x, y - 1) == EXIT or self.at(x, y + 1) == EXIT:
+            return 'x'
+        if self.at(x - 2, y) in blocked or self.at(x + 2, y) in blocked:
+            return 'x'
+        if self.at(x, y - 2) in blocked or self.at(x, y + 2) in blocked:
             return 'y'
         return 'x'
 
