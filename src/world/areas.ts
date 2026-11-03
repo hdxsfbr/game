@@ -554,9 +554,10 @@ export const JAZZ: AreaDef = {
       },
     },
     { kind: 'npc', tile: { x: 10, y: 14 }, model: 'doorman', face: 'east', door: 'jazz-club' },
-    { kind: 'npc', tile: { x: 34, y: 12 }, model: 'bassist', face: 'south', door: 'jazz-bandstand' },
-    { kind: 'npc', tile: { x: 35, y: 13 }, model: 'drummer', face: 'south', door: 'jazz-bandstand' },
-    { kind: 'npc', tile: { x: 41, y: 12 }, model: 'hornplayer', face: 'south', door: 'jazz-boss' },
+    // The band plays in front of the stand, facing the street.
+    { kind: 'npc', tile: { x: 35, y: 14 }, model: 'bassist', face: 'south', door: 'jazz-bandstand' },
+    { kind: 'npc', tile: { x: 37, y: 14 }, model: 'drummer', face: 'south', door: 'jazz-bandstand' },
+    { kind: 'npc', tile: { x: 39, y: 14 }, model: 'hornplayer', face: 'south', door: 'jazz-boss' },
     { kind: 'fragment', tile: { x: 55, y: 15 }, id: 'fragment-jazz' },
     { kind: 'exit', tiles: [{ x: 59, y: 15 }], to: 'hub', at: { x: 27, y: 8 } },
   ],

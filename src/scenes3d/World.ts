@@ -54,9 +54,10 @@ const AO_KEY = 'listening-kingdom.ao';
 /** Camera offset from the player, in tiles: high and to the south, looking north over the player's shoulder. */
 const CAM_OFFSET = new Vector3(0, 7.6, 9.2);
 const CAM_LOOK = new Vector3(0, 0.7, -1.2);
-// Tiles per second. The 2D game walked at 4.7; the singer's walk clip covers about 0.9 a second, so the
-// feet slid. 3.8 with the clip at 2.3x (Player.ts) keeps the slide small without turning the walk into a run.
-const WALK_SPEED = 3.8;
+// Tiles per second. The 2D game walked at 4.7 and the feet slid badly. The singer now runs when moving
+// (Player.ts measures the clip's stride and picks its rate); 3.4 keeps the areas quick to cross without
+// the feet skating more than the run clip's short steps allow.
+const WALK_SPEED = 3.4;
 setMoveSpeed(WALK_SPEED);
 
 export interface WorldStart {
@@ -157,9 +158,11 @@ export class World {
   /** A door the camera pushes in on for a moment, and until when. */
   private focus: { x: number; z: number; until: number } | null = null;
   /** People standing about, with the clip they play while their door is sung. */
-  private npcs: Array<{ def: NpcDef; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean }> = [];
+  private npcs: Array<{ def: NpcDef; top: TransformNode; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean; sway: number; phase: number }> = [];
   /** The door whose puzzle is running, for the people who react to it. */
   private activeDoor: string | null = null;
+  /** What loadExtras did, one line per person or prop, for the headless checks. */
+  readonly extrasLog: string[] = [];
   /** The singer keeps singing until this time (after a door opens, during the finale). */
   private celebrateUntil = 0;
   /** The finale walks the singer to centre stage. */
@@ -904,6 +907,7 @@ export class World {
     };
     const [people, props] = await Promise.all([list('character/index.json'), list('props/index.json')]);
     if (this.disposed) return;
+    this.extrasLog.push(`index: ${[...people].join(',')} | ${[...props].join(',')}`);
     const place = (top: TransformNode, tile: { x: number; y: number }, scale: number, yaw: number) => {
       top.position.set(tile.x + 0.5, 0, tile.y + 0.5);
       top.scaling.setAll(scale);
@@ -941,8 +945,10 @@ export class World {
             g.start(true, 1.0);
             g.setWeightForAllAnimatables(g === idle ? 1 : 0);
           }
-          this.npcs.push({ def: e, idle, action, acting: false });
+          this.npcs.push({ def: e, top, idle, action, acting: false, sway: 0, phase: Math.random() * 6.28 });
+          this.extrasLog.push(`npc ${e.model} loaded`);
         } catch (err) {
+          this.extrasLog.push(`npc ${e.model} failed: ${String(err).slice(0, 120)}`);
           console.warn(`character ${e.model} did not load`, err);
         }
       } else if (e.kind === 'prop' && props.has(e.model)) {
@@ -953,18 +959,34 @@ export class World {
           world(c);
           place(c.rootNodes[0] as TransformNode, e.tile, e.scale ?? 1, ((e.turn ?? 0) * Math.PI) / 2);
           if (!e.walkable) this.grid.setBlocked(e.tile.x, e.tile.y, true);
+          this.extrasLog.push(`prop ${e.model} loaded`);
         } catch (err) {
+          this.extrasLog.push(`prop ${e.model} failed: ${String(err).slice(0, 120)}`);
           console.warn(`prop ${e.model} did not load`, err);
         }
       }
     }
   }
 
-  /** Crossfade each person between idle and their action as their door starts and stops being sung. */
-  private updateNpcs(dt: number): void {
+  /**
+   * Each person: crossfade between idle and their action clip as their door starts and stops being sung.
+   * People exported without clips (the instrument players, whose instrument is part of the mesh and would
+   * not follow retargeted arms) get a whole-body sway instead: a small bounce and lean in time, stronger
+   * while their door is sung.
+   */
+  private updateNpcs(dt: number, timeMs: number): void {
     const k = Math.min(1, dt * 5);
     for (const n of this.npcs) {
-      const want = !!n.action && !!n.def.door && (n.def.door === this.activeDoor || (progress.finished && n.def.door === 'stage-song'));
+      const live = !!n.def.door && (n.def.door === this.activeDoor || (progress.finished && n.def.door === 'stage-song'));
+      if (!n.idle && !n.action) {
+        n.sway += ((live ? 1 : 0.25) - n.sway) * Math.min(1, dt * 2);
+        const t = timeMs / 1000 * (live ? 3.6 : 1.6) + n.phase;
+        const s = (n.def.scale ?? 1.3) * 0.012 * n.sway;
+        n.top.position.y = Math.abs(Math.sin(t)) * s * 4;
+        n.top.rotation.z = Math.sin(t * 0.5) * 0.05 * n.sway;
+        continue;
+      }
+      const want = !!n.action && live;
       if (want === n.acting && !n.action) continue;
       n.acting = want;
       const w = n.action?.animatables[0]?.weight ?? 0;
@@ -1173,7 +1195,7 @@ export class World {
     }
     if (this.water) this.water.time = timeMs / 1000;
     if (this.glow) this.glow.emissiveColor = this.glowBase.scale(0.55 + 0.45 * Math.sin(timeMs / 420));
-    this.updateNpcs(dt);
+    this.updateNpcs(dt, timeMs);
     this.updateColour(dt * 1000, timeMs);
     MusicPlayer.get().setLife(this.areaLife());
     this.placeCamera(Math.min(1, dt * 6));

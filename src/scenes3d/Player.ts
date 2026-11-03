@@ -21,7 +21,8 @@ export function setMoveSpeed(v: number): void {
   MOVE_SPEED = v;
 }
 /** The Tripo export's clips, matched by prefix. */
-const CLIPS = { walk: 'walk forward', run: 'run', idle: 'standing idle', sing: 'standing in place and singing' } as const;
+/** The Tripo export's clips, matched by a word in their name (exports name them 'Relaxed Walk', 'Standing Idle', 'run', 'Singing with…'). */
+const CLIPS = { walk: /walk/i, run: /run/i, idle: /idle/i, sing: /sing/i } as const;
 type Clip = keyof typeof CLIPS;
 
 /**
@@ -44,6 +45,8 @@ export class Player {
   private clip: Clip = 'idle';
   /** The clip used for moving (run when the character has one), and its footfalls a second at the chosen rate. */
   private moveClip: Clip = 'walk';
+  /** What the last stride measurement found, for the headless checks. */
+  static lastStride: { clip: string; step: number; cadence: number; ground: number; from: number; to: number; samples: number; first: number[] } | null = null;
   private stepsPerSecond = 2 * WALK_RATE;
   private singing = false;
   /** Yaw to add so the model's front faces -Z like the mannequin. */
@@ -79,20 +82,21 @@ export class Player {
       top.scaling.setAll(TRIPO_SCALE);
       p.faceOffset = TRIPO_FACE;
       for (const g of container.animationGroups) {
-        const key = (Object.keys(CLIPS) as Clip[]).find((k) => g.name.startsWith(CLIPS[k]));
+        const key = (Object.keys(CLIPS) as Clip[]).find((k) => CLIPS[k].test(g.name));
         if (key) p.clips[key] = g;
       }
       if (p.clips.walk && p.clips.idle) {
         // Every clip loops all the time; only their weights change, so switching is a crossfade.
         p.moveClip = p.clips.run ? 'run' : 'walk';
         const move = p.clips[p.moveClip]!;
-        const rate = p.matchStride(scene, move);
+        // Start everything first: a clip only answers goToFrame once it is running, and the stride is
+        // measured by stepping through the moving clip's frames.
         for (const g of Object.values(p.clips)) {
           g.start(true, 1.0);
-          // Set after start: measuring the stride has already started the clip, and start() is then a no-op.
-          g.speedRatio = g === move ? rate : 1.0;
           g.setWeightForAllAnimatables(0);
         }
+        move.speedRatio = p.matchStride(scene, move);
+        for (const g of Object.values(p.clips)) g.setWeightForAllAnimatables(0);
         p.clips.idle.setWeightForAllAnimatables(1);
       } else {
         for (const g of container.animationGroups) g.stop();
@@ -128,19 +132,24 @@ export class Player {
     const seps: number[] = [];
     for (let f = clip.from; f <= clip.to; f += 2) {
       clip.goToFrame(f);
-      scene.render();
-      const a = lf.getAbsolutePosition();
-      const b = rf.getAbsolutePosition();
-      seps.push(Math.hypot(a.x - b.x, a.z - b.z));
+      // Apply the frame to the joints and bring the feet's world matrices up to date without a render,
+      // which at load time would not evaluate the hierarchy yet.
+      scene.animate();
+      lf.computeWorldMatrix(true);
+      rf.computeWorldMatrix(true);
+      const d = Math.hypot(lf.absolutePosition.x - rf.absolutePosition.x, lf.absolutePosition.z - rf.absolutePosition.z);
+      if (Number.isFinite(d)) seps.push(d); // the very first frame can come back before the matrices exist
     }
     const max = Math.max(...seps);
     let peaks = 0;
     for (let i = 1; i < seps.length - 1; i++) if (seps[i] > max * 0.6 && seps[i] >= seps[i - 1] && seps[i] > seps[i + 1]) peaks++;
     const cadence = peaks / seconds; // steps a second at 1x
     const ground = max * cadence; // tiles a second at 1x
+    Player.lastStride = { clip: clip.name, step: +max.toFixed(3), cadence: +cadence.toFixed(2), ground: +ground.toFixed(2), from: clip.from, to: clip.to, samples: seps.length, first: seps.slice(0, 6).map((v) => +v.toFixed(3)) };
     if (!(ground > 0.05)) return WALK_RATE;
-    // Runs read fine up to about 4 steps a second; a walk is not pushed past a brisk pace.
-    const cap = this.moveClip === 'run' ? 4 / cadence : 2.4;
+    // A run reads fine up to about five steps a second; a walk is not pushed past a brisk pace. Tripo's
+    // in-place run takes short steps (0.39 tiles), so some slide remains rather than a comic sprint.
+    const cap = this.moveClip === 'run' ? 5 / cadence : 2.4;
     const rate = Math.max(0.6, Math.min(cap, MOVE_SPEED / ground));
     this.stepsPerSecond = cadence * rate;
     return rate;

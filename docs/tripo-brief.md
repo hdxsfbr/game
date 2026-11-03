@@ -89,6 +89,15 @@ Three trees for the valley and town palettes, each a separate prop: `tree-round.
 canopy made of a few faceted lobes, flat green, no leaves detail". These need a generator change to
 use, so they come last.
 
+## Done so far (2026-11-03 evening)
+- Singer: run preset added and exported with all four clips (`singer.glb`, 7.5 MB). The game runs it at
+  1.56x (five steps a second) and walks at 3.4 tiles a second.
+- Band: bassist, drummer, trumpeter generated, retopologised, exported without clips. Lesson learned:
+  an instrument modelled into the character cannot take Tripo's motions (the arms retarget away from
+  it), so these three sway as a whole in the game. Credits left: about 2685.
+- Transfer: exports download to the Mac; one `scp ~/Downloads/<names>*.glb hdx-lab:.../scratch/tripo/`
+  per batch brings them over, and `scripts/assets-index.mjs` registers them.
+
 ## Budget
 
 Check the per-job cost in the Tripo console before starting: a rigged character with two clips is

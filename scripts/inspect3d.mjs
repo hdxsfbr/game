@@ -29,7 +29,7 @@ const browser = await puppeteer.launch({
 });
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('pageerror', String(e)));
-page.on('console', (m) => { if (m.type() === 'error') console.log('console.error', m.text()); });
+page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('console.' + m.type(), m.text().slice(0, 300)); });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 if (seed) await page.evaluateOnNewDocument((v) => localStorage.setItem('listening-kingdom.progress.v1', v), seed);
 await page.goto(`${base}/?${seed ? '' : 'reset=1&'}scene=world&area=${area}${query}`, { waitUntil: 'load' });
