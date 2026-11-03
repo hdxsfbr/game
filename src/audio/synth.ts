@@ -122,22 +122,29 @@ export function playSequence(midis: number[], opts: NoteOptions & { gap?: number
   return end;
 }
 
-/** I, IV, V, I in the key of `tonicMidi`, as block chords. Returns the end time. */
+/**
+ * I, IV, V, I in the key of `tonicMidi`, as block chords. Returns the end time.
+ * Voiced in close position around the tonic itself (the IV and V in inversion), with a quiet bass an
+ * octave below each root: an octave lower the whole cadence sounded muddy and the tonic was hard to pick out.
+ */
 export function playCadence(tonicMidi: number, opts: { at?: number; gain?: number; speed?: number } = {}): number {
   const engine = AudioEngine.get();
   const k = opts.speed ?? 1;
   const beat = 0.55 * k;
   const t0 = opts.at ?? engine.now;
-  const gain = opts.gain ?? 0.5;
-  const chords = [
-    [0, 4, 7], // I
-    [5, 9, 12], // IV
-    [7, 11, 14], // V
-    [0, 4, 7], // I
+  // Loud enough to sit beside the prompt notes (0.55 each): the chord voice is scaled down and spread
+  // over three notes, so the cadence needs a higher figure to come out at the same level.
+  const gain = opts.gain ?? 0.8;
+  const chords: Array<{ notes: number[]; root: number }> = [
+    { notes: [0, 4, 7], root: 0 }, // I
+    { notes: [0, 5, 9], root: 5 }, // IV, second inversion
+    { notes: [-1, 2, 7], root: 7 }, // V, first inversion
+    { notes: [0, 4, 7], root: 0 }, // I
   ];
   let end = t0;
   chords.forEach((c, i) => {
-    end = playChord(c.map((n) => tonicMidi + n - 12), { timbre: 'chord', at: t0 + i * beat, duration: beat * 0.72, gain });
+    playNote(tonicMidi + c.root - 24, { timbre: 'bass', at: t0 + i * beat, duration: beat * 0.7, gain: gain * 0.4 });
+    end = playChord(c.notes.map((n) => tonicMidi + n), { timbre: 'chord', at: t0 + i * beat, duration: beat * 0.72, gain });
   });
   return end;
 }
