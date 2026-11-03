@@ -39,6 +39,12 @@ while (Date.now() - t0 < 30000) {
 }
 if (!(await page.evaluate(() => !!(window.__lk && window.__lk.ready)))) throw new Error('world never became ready');
 await sleep(900);
+// The story card shown on first arrival: Space closes it.
+if (await page.evaluate(() => !!(window.__lk.storyCard && window.__lk.storyCard.visible))) {
+  await shot(`00-${area}-card`);
+  await page.keyboard.press('Space');
+  await sleep(600);
+}
 await shot(`01-${area}`);
 const pos = () => page.evaluate(() => ({ x: window.__lk.player.x, z: window.__lk.player.z, area: window.__lk.area.id }));
 console.log('start', await pos());

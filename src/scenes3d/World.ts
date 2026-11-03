@@ -34,7 +34,11 @@ import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
 import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec } from '../world/puzzles';
+import { LifeMap, LifePlugin, WaterPlugin } from './colour';
 import { Grid } from './grid';
+import { SkyDome } from './sky';
+import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline';
+import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { hexToColor3, toStandard } from './materials';
 import { Player } from './Player';
 import { listeningStatus, playPrompt, playSongLayers } from './prompts';
@@ -121,6 +125,10 @@ export class World {
   private shadows!: ShadowGenerator;
   private container!: AssetContainer;
   private matCache = new Map<Material, StandardMaterial>();
+  private lifeMap!: LifeMap;
+  private water: WaterPlugin | null = null;
+  private sky!: SkyDome;
+  private pipeline: DefaultRenderingPipeline | null = null;
   private keys = new Set<string>();
   private camPos = new Vector3();
   private shakeUntil = 0;
@@ -181,7 +189,7 @@ export class World {
     scene.clearColor = new Color4(sky.r, sky.g, sky.b, 1);
     scene.ambientColor = new Color3(0.25, 0.25, 0.28);
     scene.fogMode = Scene.FOGMODE_EXP2;
-    scene.fogDensity = 0.016;
+    scene.fogDensity = 0.012;
     scene.fogColor = sky;
 
     const hemi = new HemisphericLight('sky', new Vector3(0.1, 1, 0.2), scene);
@@ -222,9 +230,32 @@ export class World {
       if (m.getTotalVertices() > 0 && m.name !== 'water') this.shadows.addShadowCaster(m, false);
       if (m.name === 'ground') m.freezeWorldMatrix();
     }
+    // Colour: every world material mixes toward grey by the tile's life.
+    this.lifeMap = new LifeMap(this.grid.w, this.grid.h, scene);
+    for (const mat of this.matCache.values()) {
+      new LifePlugin(mat, this.lifeMap);
+      if (mat.name === 'water') this.water = new WaterPlugin(mat);
+    }
+    this.sky = new SkyDome(scene);
+    // A warm lamp at the bench and a little bloom on everything that glows.
+    for (const e of this.area.entities) {
+      if (e.kind === 'practice') {
+        const lamp = new PointLight('lamp', new Vector3(e.tile.x + 0.5 + 0.62, 1.3, e.tile.y + 0.5), scene);
+        lamp.diffuse = hexToColor3(this.palette.accent);
+        lamp.intensity = 2.2;
+        lamp.range = 5;
+      }
+    }
+    this.pipeline = new DefaultRenderingPipeline('pipe', true, scene, [this.camera]);
+    this.pipeline.bloomEnabled = true;
+    this.pipeline.bloomThreshold = 0.75;
+    this.pipeline.bloomWeight = 0.3;
+    this.pipeline.bloomKernel = 48;
+    this.pipeline.bloomScale = 0.5;
+    this.pipeline.fxaaEnabled = true;
     this.buildEntities();
 
-    this.player = await Player.load(scene, this.matCache);
+    this.player = await Player.load(scene, new Map());
     if (this.disposed) return;
     for (const m of this.player.meshes) this.shadows.addShadowCaster(m, false);
     const at = start.at ?? (progress.area === this.area.id && progress.x > 0 ? { x: progress.x, y: progress.y } : this.area.start);
@@ -375,9 +406,12 @@ export class World {
       }
       this.life[i] += d * k;
     }
+    this.lifeMap.upload(this.life);
     const sky = hexToColor3(lerpColor(GREY.sky, this.palette.sky, this.areaLife()));
+    const horizon = Color3.Lerp(sky, new Color3(0.85, 0.82, 0.78), 0.45);
     this.scene.clearColor = new Color4(sky.r, sky.g, sky.b, 1);
-    this.scene.fogColor = sky;
+    this.scene.fogColor = horizon;
+    this.sky.setColours(sky, horizon);
   }
 
   // ---------- movement ----------
@@ -865,6 +899,7 @@ export class World {
       this.fragment.position.y = 0.7 + Math.sin(this.fragmentT * 2.2) * 0.12;
       this.fragment.rotation.y += dt * 1.4;
     }
+    if (this.water) this.water.time = timeMs / 1000;
     this.updateColour(dt * 1000, timeMs);
     MusicPlayer.get().setLife(this.areaLife());
     this.placeCamera(Math.min(1, dt * 6));

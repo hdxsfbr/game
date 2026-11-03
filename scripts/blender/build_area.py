@@ -189,6 +189,22 @@ class Builder:
             v.co += Vector(center)
         self._absorb(bm, mat, smooth)
 
+    def wedge(self, center, size, mat, axis='x', smooth=False):
+        """A pitched roof: a box whose top edge is pinched to a ridge running along `axis`."""
+        bm = bmesh.new()
+        sx, sy, sz = size[0] / 2, size[1] / 2, size[2] / 2
+        cx, cy, cz = center
+        if axis == 'x':
+            vs = [bm.verts.new(Vector(v)) for v in ((cx - sx, cy - sy, cz - sz), (cx + sx, cy - sy, cz - sz), (cx + sx, cy + sy, cz - sz), (cx - sx, cy + sy, cz - sz), (cx - sx, cy, cz + sz), (cx + sx, cy, cz + sz))]
+            faces = [(0, 1, 2, 3)[::-1], (0, 1, 5, 4), (2, 3, 4, 5), (1, 2, 5), (3, 0, 4)]
+        else:
+            vs = [bm.verts.new(Vector(v)) for v in ((cx - sx, cy - sy, cz - sz), (cx + sx, cy - sy, cz - sz), (cx + sx, cy + sy, cz - sz), (cx - sx, cy + sy, cz - sz), (cx, cy - sy, cz + sz), (cx, cy + sy, cz + sz))]
+            faces = [(0, 1, 2, 3)[::-1], (1, 2, 5, 4), (3, 0, 4, 5), (0, 1, 4), (2, 3, 5)]
+        for f in faces:
+            bm.faces.new([vs[i] for i in f])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        self._absorb(bm, mat, smooth)
+
     def sphere(self, center, radius, mat, scale=(1, 1, 1), subdiv=2, smooth=True):
         bm = bmesh.new()
         bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=radius)
@@ -284,6 +300,7 @@ class Area:
         self.area = area
         self.p = palette
         self.rows = area['map']
+        self.style = area['id']
         self.h = len(self.rows)
         self.w = max(len(r) for r in self.rows)
         self.entities = area['entities']
@@ -399,6 +416,7 @@ class Area:
         wall = material('wall', p['wall'])
         top = material('wall-top', shade(p['wall'], 1.18))
         trim = material('wall-trim', shade(p['wall'], 0.72))
+        roof = material('roof', shade(p['accent'], 0.95), rough=0.75)
         for (x0, y, n) in self.wall_runs():
             # Split long runs into shorter blocks of varying height so a wall reads as buildings or cliff faces.
             x = x0
@@ -409,12 +427,31 @@ class Area:
                 cx = x + seg / 2
                 cy = -(y + 0.5)
                 b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.09)
-                # A lighter cap and a dark plinth give the block a top and a base.
-                b.box((cx, cy, hgt + 0.03), (seg - 0.18, 0.82, 0.1), top, bevel=0.04)
+                if self.style == 'town' and near:
+                    # Tonic Town: houses with pitched terracotta roofs and lit windows toward the street.
+                    b.wedge((cx, cy, hgt + 0.24), (seg + 0.16, 1.12, 0.5), roof, axis='x')
+                    b.box((cx, cy, hgt + 0.5), (seg + 0.2, 0.08, 0.05), trim, bevel=0.01)
+                    self.windows(b, x, y, seg, hgt)
+                else:
+                    # A lighter cap and a dark plinth give the block a top and a base.
+                    b.box((cx, cy, hgt + 0.03), (seg - 0.18, 0.82, 0.1), top, bevel=0.04)
                 if near:
                     b.box((cx, cy, 0.06), (seg + 0.02, 1.02, 0.12), trim, bevel=0.03)
                 x += seg
         return b.build()
+
+    def windows(self, b, x, y, seg, hgt):
+        """Small warm windows on the faces of a house that look onto open ground."""
+        p = self.p
+        pane = material('window', 0xFFE2A0, emission=0xFFC46A, rough=0.3)
+        frame = material('wall-trim', shade(p['wall'], 0.72))
+        for xx in range(x, x + seg):
+            for dy, side in ((1, -1), (-1, 1)):
+                if self.at(xx, y + dy) != WALL and hash2(xx, y, 21 + dy) < 0.6:
+                    cx, cy, _ = tile_pos(xx, y)
+                    wy = cy + side * 0.49
+                    b.box((cx, wy, hgt * 0.55), (0.3, 0.06, 0.34), frame, bevel=0.01)
+                    b.box((cx, wy + side * 0.01, hgt * 0.55), (0.22, 0.06, 0.26), pane)
 
     # ----- trees
 
@@ -621,6 +658,120 @@ class Area:
                 props.box((px, py, 0.3), (0.16, 0.16, 0.6), stone, bevel=0.03)
                 props.box((px, py, 0.64), (0.12, 0.12, 0.08), lamp, bevel=0.02)
 
+    def area_props(self, props):
+        """What makes each area itself: awnings and stalls in the town, neon and the band stand in the quarter, curtains on the stage."""
+        p = self.p
+        doors = [e for e in self.entities if e['kind'] == 'door']
+        if self.style == 'town':
+            awning = material('awning', p['accent'], rough=0.8)
+            stripe = material('awning-stripe', 0xF6EFE2, rough=0.8)
+            for e in doors:
+                x, y = e['tiles'][0]
+                cx, cy, _ = tile_pos(x, y)
+                # A striped awning over the doorway on the side the street comes from.
+                side = 1 if self.at(x, y + 1) != WALL else -1
+                ay = cy - side * 0.62
+                for i in range(5):
+                    ox = -0.5 + (i + 0.5) / 5
+                    props.box((cx + ox, ay, 1.55 - 0.08 * 0 ), (0.2, 0.5, 0.05), awning if i % 2 == 0 else stripe, bevel=0.01)
+                for sx in (-1, 1):
+                    props.cylinder((cx + sx * 0.46, ay - side * 0.22, 0.78), 0.03, 1.56, material('wall-trim', shade(p['wall'], 0.72)), segments=6)
+            # Market crates near the stalls.
+            crate = material('crate', shade(p['bridge'], 0.9))
+            for e in doors:
+                if 'stall' not in e['id']:
+                    continue
+                x, y = e['tiles'][0]
+                side = 1 if self.at(x, y + 1) != WALL else -1
+                for k, dx in enumerate((-2, 2)):
+                    if self.at(x + dx, y + side) != GROUND:
+                        continue
+                    cx, cy, _ = tile_pos(x + dx, y + side)
+                    props.box((cx, cy, 0.17), (0.4, 0.4, 0.34), crate, bevel=0.03)
+                    if k == 0:
+                        props.box((cx + 0.1, cy - 0.1, 0.5), (0.3, 0.3, 0.3), crate, bevel=0.03)
+        elif self.style == 'jazz':
+            neon = material('neon', p['accent'], emission=p['accent'], rough=0.3)
+            neon2 = material('neon-blue', p['water'], emission=p['water'], rough=0.3)
+            dark = material('sign-back', shade(p['wall'], 0.6))
+            for i, e in enumerate(doors):
+                x, y = e['tiles'][0]
+                cx, cy, _ = tile_pos(x, y)
+                # A hanging sign on the building corner above the street, lit in neon.
+                for side in (-1, 1):
+                    wy = cy + side * 0.5
+                    props.box((cx, wy + side * 0.1, 1.5), (0.7, 0.14, 0.42), dark, bevel=0.02)
+                    props.box((cx, wy + side * 0.2, 1.5), (0.56, 0.03, 0.08), neon if (i + side) % 2 else neon2)
+                    props.box((cx, wy + side * 0.2, 1.36), (0.4, 0.03, 0.05), neon2 if (i + side) % 2 else neon)
+            # The band stand: the island block in the street becomes a low stage with a canopy.
+            stand = material('stand', shade(p['bridge'], 1.1))
+            post = material('post', shade(p['wall'], 0.5))
+            for (x0, y, n) in self.wall_runs():
+                if not (y in (12, 13, 17, 18) and 30 < x0 < 45):
+                    continue
+                cx = x0 + n / 2
+                cy = -(y + 0.5)
+                props.box((cx, cy, 1.95), (n + 0.3, 1.3, 0.1), stand, bevel=0.02)
+                for sx in (-1, 1):
+                    for sy in (-1, 1):
+                        props.cylinder((cx + sx * (n / 2 + 0.05), cy + sy * 0.55, 1.5), 0.04, 0.8, post, segments=6)
+            # Drums and a double bass on the stand nearest the band stand door.
+            drum = material('drum', shade(p['accent'], 0.7), rough=0.5)
+            props.cylinder((37.5, -12.6, 1.45), 0.22, 0.25, drum, segments=12)
+            props.cylinder((38.2, -12.9, 1.4), 0.16, 0.18, drum, segments=12)
+            props.box((36.6, -12.8, 1.7), (0.18, 0.3, 0.9), material('bass', shade(p['bridge'], 0.8)), bevel=0.06)
+        elif self.style == 'stage':
+            curtain = material('curtain', 0x9B2335, rough=0.9)
+            gold = material('gold', p['accent'], rough=0.35, metal=0.6, emission=shade(p['accent'], 0.25))
+            for e in doors:
+                x, y = e['tiles'][0]
+                cx, cy, _ = tile_pos(x, y)
+                front = cy - 0.62
+                # Curtains either side of the song door, hung as columns of folds, and a gilded proscenium.
+                for side in (-1, 1):
+                    for k in range(6):
+                        ox = side * (0.65 + k * 0.42)
+                        props.cylinder((cx + ox, front, 1.25), 0.2, 2.5, curtain, segments=8)
+                    props.box((cx + side * 1.9, front - 0.05, 1.45), (2.6, 0.18, 0.25), gold, bevel=0.03)
+                props.box((cx, front - 0.1, 2.62), (6.2, 0.42, 0.3), gold, bevel=0.05)
+                props.box((cx, front - 0.1, 2.3), (6.0, 0.3, 0.4), curtain, bevel=0.03)
+                for sx in (-1, 1):
+                    props.box((cx + sx * 3.0, front - 0.1, 1.3), (0.34, 0.42, 2.6), gold, bevel=0.04)
+            # Footlights along the apron (the bridge row).
+            lamp = material('lamp', p['accent'], emission=p['accent'], rough=0.3)
+            for y in range(self.h):
+                for x in range(self.w):
+                    if self.at(x, y) == BRIDGE and self.at(x, y + 1) != BRIDGE:
+                        cx, cy, _ = tile_pos(x, y)
+                        props.box((cx, cy - 0.46, 0.14), (0.16, 0.08, 0.12), lamp, bevel=0.02)
+        elif self.style == 'hub':
+            # The hearth: a chimney breast and embers by the first door.
+            stone = material('pillar', shade(p['wall'], 0.85))
+            ember = material('ember', 0xFF7A3A, emission=0xFF6A2A, rough=0.6)
+            for e in doors:
+                x, y = e['tiles'][0]
+                cx, cy, _ = tile_pos(x, y)
+                props.box((cx, cy + 1.5, 1.1), (0.9, 0.9, 2.2), stone, bevel=0.05)
+                props.box((cx + 0.5, cy + 1.5, 0.35), (0.3, 0.5, 0.5), stone, bevel=0.03)
+                props.box((cx + 0.56, cy + 1.5, 0.2), (0.2, 0.3, 0.2), ember, bevel=0.03)
+        elif self.style == 'valley':
+            # Standing stones flank the gates and the grove.
+            stone = material('pillar', shade(p['wall'], 0.85))
+            for e in doors:
+                if 'serpent' in e['id'] or 'octave' in e['id']:
+                    continue
+                x, y = e['tiles'][0]
+                cx, cy, _ = tile_pos(x, y)
+                axis = self.door_axis(x, y)
+                for side in (-1, 1):
+                    if axis == 'x':
+                        px, py = cx + side * 1.1, cy - 0.3
+                    else:
+                        px, py = cx - 0.3, cy + side * 1.1
+                    if self.at(int(px), int(-py)) != GROUND:
+                        continue
+                    props.box((px, py, 0.6), (0.3, 0.26, 1.2 + 0.3 * hash2(x + side, y, 31)), stone, bevel=0.06)
+
     def decorate(self, props):
         """Small rocks and grass tufts on open ground, hashed per tile so every build is the same."""
         p = self.p
@@ -663,6 +814,7 @@ def build_area(area, palette, out_dir):
     a.build_gates(props)
     a.build_bench(props)
     a.build_exits(props)
+    a.area_props(props)
     a.decorate(props)
     props.build()
     os.makedirs(out_dir, exist_ok=True)
