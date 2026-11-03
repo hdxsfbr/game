@@ -4,6 +4,7 @@ import type { Material } from '@babylonjs/core/Materials/material';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
+import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup';
 import type { Scene } from '@babylonjs/core/scene';
 import { toStandard } from './materials';
 import { Rig } from './Rig';
@@ -12,6 +13,9 @@ export type Facing = 'north' | 'south' | 'east' | 'west';
 
 const TRIPO_SCALE = 1.3;
 const TRIPO_FACE = Math.PI;
+/** The Tripo export's clips, matched by prefix. */
+const CLIPS = { walk: 'walk forward', idle: 'standing idle', sing: 'standing in place and singing' } as const;
+type Clip = keyof typeof CLIPS;
 
 /**
  * The player: a node at the feet, driven in tile units. Until the Tripo character arrives this is
@@ -28,6 +32,10 @@ export class Player {
   private moving = false;
   private blend = 0;
   rig: Rig | null = null;
+  /** Animation clips when the character has them; the rig drives the joints otherwise. */
+  private clips: Partial<Record<Clip, AnimationGroup>> = {};
+  private clip: Clip = 'idle';
+  private singing = false;
   /** Yaw to add so the model's front faces -Z like the mannequin. */
   private faceOffset = 0;
   private limbs: Partial<Record<'Hips' | 'Torso' | 'Head' | 'ArmL' | 'ArmR' | 'LegL' | 'LegR', TransformNode>> = {};
@@ -42,7 +50,7 @@ export class Player {
     // The Tripo singer (rigged, no clips, driven by Rig); the Blender mannequin if it is missing.
     let container: Awaited<ReturnType<typeof LoadAssetContainerAsync>> | null = null;
     try {
-      container = await LoadAssetContainerAsync('character/listening-kingdom-singer.glb', scene);
+      container = await LoadAssetContainerAsync('character/singer.glb', scene);
     } catch {
       container = null;
     }
@@ -60,8 +68,22 @@ export class Player {
       // About a tile tall, facing the way the mannequin does.
       top.scaling.setAll(TRIPO_SCALE);
       p.faceOffset = TRIPO_FACE;
-      p.rig = new Rig(scene);
-      if (!p.rig.ok) p.rig = null;
+      for (const g of container.animationGroups) {
+        const key = (Object.keys(CLIPS) as Clip[]).find((k) => g.name.startsWith(CLIPS[k]));
+        if (key) p.clips[key] = g;
+      }
+      if (p.clips.walk && p.clips.idle) {
+        // Every clip loops all the time; only their weights change, so switching is a crossfade.
+        for (const g of Object.values(p.clips)) {
+          g.start(true, 1.0);
+          g.setWeightForAllAnimatables(0);
+        }
+        p.clips.idle.setWeightForAllAnimatables(1);
+      } else {
+        for (const g of container.animationGroups) g.stop();
+        p.rig = new Rig(scene);
+        if (!p.rig.ok) p.rig = null;
+      }
     }
     for (const n of container.transformNodes) {
       const name = n.name as keyof typeof p.limbs;
@@ -96,6 +118,11 @@ export class Player {
     this.moving = moving;
   }
 
+  /** True while a door is listening: the singer sings instead of standing. */
+  setSinging(singing: boolean): void {
+    this.singing = singing;
+  }
+
   /** Advance the walk. Returns true on a footfall. */
   update(dt: number, timeMs: number): boolean {
     let d = this.targetYaw - this.yaw;
@@ -106,6 +133,23 @@ export class Player {
 
     const L = this.limbs;
     let footfall = false;
+    if (this.clips.walk && this.clips.idle) {
+      const want: Clip = this.moving ? 'walk' : this.singing && this.clips.sing ? 'sing' : 'idle';
+      if (want !== this.clip) this.clip = want;
+      const k = Math.min(1, dt * 7);
+      for (const key of Object.keys(this.clips) as Clip[]) {
+        const g = this.clips[key]!;
+        const w = g.animatables[0]?.weight ?? 0;
+        const target = key === this.clip ? 1 : 0;
+        if (Math.abs(target - w) > 0.001) g.setWeightForAllAnimatables(w + (target - w) * k);
+      }
+      if (this.moving) {
+        const before = Math.floor(this.phase / Math.PI);
+        this.phase += dt * 9.5;
+        footfall = Math.floor(this.phase / Math.PI) !== before;
+      } else this.phase = 0;
+      return footfall;
+    }
     if (this.rig) {
       const before = Math.floor(this.phase / Math.PI);
       if (this.moving) this.phase += dt * 9.5;
@@ -148,6 +192,7 @@ export class Player {
   }
 
   dispose(): void {
+    for (const g of Object.values(this.clips)) g.dispose();
     this.root.dispose(false, true);
   }
 }

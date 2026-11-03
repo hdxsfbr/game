@@ -873,6 +873,7 @@ export class World {
       this.checkExit();
     }
     this.player.setMoving(moving);
+    this.player.setSinging(!!this.runner && this.runner.phase === 'listening');
     if (this.player.update(dt, timeMs)) footstep();
 
     // What Space would do here.
