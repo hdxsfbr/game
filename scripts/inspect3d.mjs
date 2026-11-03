@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Dump the loaded 3D scene from headless Chrome: meshes, vertex counts, materials, shadow casters.
 // Usage: node scripts/inspect3d.mjs [baseUrl] [area] [--quiet] then any sequence of
-//   --eval "js run with w = window.__lk"   --shot file.png   --wait ms   --query "ao=on&x=20&y=20"   --progress json   --gpu
+//   --eval "js run with w = window.__lk"   --shot file.png   --wait ms   --query "ao=on&x=20&y=20"   --progress json   --gpu   --dpr 2
 // which are carried out in order.
 import puppeteer from 'puppeteer-core';
 import { execSync } from 'node:child_process';
@@ -17,12 +17,15 @@ const seed = pi > 0 ? process.argv[pi + 1] : '';
 const gi = process.argv.indexOf('--gpu');
 const gpu = gi > 0 ? (process.argv[gi + 1] && !process.argv[gi + 1].startsWith('--') ? process.argv[gi + 1] : 'vulkan') : '';
 const query = qi > 0 ? '&' + process.argv[qi + 1] : '';
+// --dpr 2 renders at a device pixel ratio of 2, as a retina display would.
+const di = process.argv.indexOf('--dpr');
+const dpr = di > 0 ? Number(process.argv[di + 1]) : 1;
 const chrome = execSync('command -v google-chrome || command -v chromium || command -v chromium-browser').toString().trim();
 const browser = await puppeteer.launch({
   executablePath: chrome,
   headless: 'new',
   args: ['--ignore-certificate-errors', '--autoplay-policy=no-user-gesture-required', '--window-size=1280,720', ...(gpu ? ['--use-gl=angle', `--use-angle=${gpu}`, '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--enable-features=Vulkan', '--disable-gpu-vsync', '--disable-frame-rate-limit'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'])],
-  defaultViewport: { width: 1280, height: 720 },
+  defaultViewport: { width: 1280, height: 720, deviceScaleFactor: dpr },
 });
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('pageerror', String(e)));
@@ -58,7 +61,7 @@ const info = await page.evaluate(() => {
 if (!quiet) console.log(JSON.stringify(info, null, 1));
 for (let i = 4; i < process.argv.length; i++) {
   const a = process.argv[i];
-  if (a === '--query' || a === '--progress') i++;
+  if (a === '--query' || a === '--progress' || a === '--dpr') i++;
   else if (a === '--gpu') { if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) i++; }
   else if (a === '--eval') {
     const r = await page.evaluate((js) => { const w = window.__lk; return JSON.stringify(new Function('w', js)(w)); }, process.argv[++i]);

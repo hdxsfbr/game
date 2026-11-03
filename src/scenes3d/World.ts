@@ -51,7 +51,9 @@ const AO_KEY = 'listening-kingdom.ao';
 /** Camera offset from the player, in tiles: high and to the south, looking north over the player's shoulder. */
 const CAM_OFFSET = new Vector3(0, 7.6, 9.2);
 const CAM_LOOK = new Vector3(0, 0.7, -1.2);
-const WALK_SPEED = 4.7; // tiles per second, the 2D game's 150 px/s
+// Tiles per second. The 2D game walked at 4.7; the singer's walk clip covers about 0.9 a second, so the
+// feet slid. 3.8 with the clip at 2.3x (Player.ts) keeps the slide small without turning the walk into a run.
+const WALK_SPEED = 3.8;
 
 export interface WorldStart {
   area?: string;
@@ -218,16 +220,18 @@ export class World {
     this.sun.shadowMinZ = 1;
     this.sun.shadowMaxZ = 60;
     this.sun.autoUpdateExtends = false;
-    const ext = 16;
+    // The camera sees about 20 by 12 tiles: a tight frustum spends the shadow map on what is on screen.
+    const ext = 12;
     this.sun.orthoLeft = -ext;
     this.sun.orthoRight = ext;
     this.sun.orthoTop = ext;
     this.sun.orthoBottom = -ext;
     this.shadows = new ShadowGenerator(2048, this.sun);
     this.shadows.usePercentageCloserFiltering = true;
-    this.shadows.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-    this.shadows.bias = 0.0015;
-    this.shadows.normalBias = 0.02;
+    this.shadows.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+    this.shadows.bias = 0.001;
+    // Enough normal bias that the wall tops, lit at a grazing angle, do not pick up a fringe of acne.
+    this.shadows.normalBias = 0.05;
     this.shadows.darkness = 0.35;
 
     this.camera = new TargetCamera('cam', new Vector3(0, 10, 10), scene);
@@ -290,9 +294,11 @@ export class World {
     this.pipeline = new DefaultRenderingPipeline('pipe', false, scene, [this.camera]);
     this.pipeline.imageProcessingEnabled = false;
     this.pipeline.bloomEnabled = true;
-    this.pipeline.bloomThreshold = 0.75;
-    this.pipeline.bloomWeight = 0.3;
-    this.pipeline.bloomKernel = 48;
+    // Bloom is for the glowing things (door strips, rings, lamps, neon). At 0.75 it caught sunlit grass and
+    // wall tops and smeared a haze along every edge.
+    this.pipeline.bloomThreshold = 0.92;
+    this.pipeline.bloomWeight = 0.25;
+    this.pipeline.bloomKernel = 32;
     this.pipeline.bloomScale = 0.5;
     this.pipeline.fxaaEnabled = true;
     this.buildEntities();

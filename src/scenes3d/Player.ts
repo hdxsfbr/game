@@ -13,6 +13,12 @@ export type Facing = 'north' | 'south' | 'east' | 'west';
 
 const TRIPO_SCALE = 1.3;
 const TRIPO_FACE = Math.PI;
+/**
+ * The walk clip takes steps of about 0.44 tiles twice a second, so at 1x it covers 0.9 tiles a second.
+ * Played at this rate the feet keep up with WALK_SPEED (World.ts) well enough that they no longer skate.
+ */
+const WALK_RATE = 2.3;
+const STEPS_PER_SECOND = 2 * WALK_RATE;
 /** The Tripo export's clips, matched by prefix. */
 const CLIPS = { walk: 'walk forward', idle: 'standing idle', sing: 'standing in place and singing' } as const;
 type Clip = keyof typeof CLIPS;
@@ -75,7 +81,7 @@ export class Player {
       if (p.clips.walk && p.clips.idle) {
         // Every clip loops all the time; only their weights change, so switching is a crossfade.
         for (const g of Object.values(p.clips)) {
-          g.start(true, 1.0);
+          g.start(true, g === p.clips.walk ? WALK_RATE : 1.0);
           g.setWeightForAllAnimatables(0);
         }
         p.clips.idle.setWeightForAllAnimatables(1);
@@ -145,7 +151,7 @@ export class Player {
       }
       if (this.moving) {
         const before = Math.floor(this.phase / Math.PI);
-        this.phase += dt * 9.5;
+        this.phase += dt * STEPS_PER_SECOND * Math.PI;
         footfall = Math.floor(this.phase / Math.PI) !== before;
       } else this.phase = 0;
       return footfall;
