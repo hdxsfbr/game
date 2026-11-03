@@ -150,6 +150,7 @@ export class World {
   private glowBase = new Color3(0, 0, 0);
   /** Singing an opened door again: no voice lost or gained, nothing recorded. */
   private resing = false;
+  private practiceRing: Mesh | null = null;
   private practice: PracticeDef | null = null;
   private fragment: Mesh | null = null;
   private fragmentT = 0;
@@ -348,7 +349,8 @@ export class World {
       } else if (e.kind === 'practice') {
         this.grid.setBlocked(e.tile.x, e.tile.y, true);
         this.practice = e;
-        if (progress.drilled.includes(e.lesson)) this.ringAt(e.tile, true);
+        // The bench's ring pulses like a closed door's until its drill has been done once.
+        this.practiceRing = this.ringAt(e.tile, progress.drilled.includes(e.lesson));
       } else if (e.kind === 'fragment' && !progress.solved.includes(e.id)) {
         const gem = CreatePolyhedron('fragment', { type: 1, size: 0.22 }, this.scene);
         const mat = new StandardMaterial('fragment', this.scene);
@@ -802,7 +804,7 @@ export class World {
     this.endPuzzle(true);
     if (this.practice && !progress.drilled.includes(this.practice.lesson)) {
       progress.drilled.push(this.practice.lesson);
-      this.ringAt(this.practice.tile, true);
+      if (this.practiceRing) this.setRing(this.practiceRing, true);
     }
     const v = progress.voice;
     this.toast(v >= VOICE_DRILL_CAP ? `Practice done. Voice ${v} of ${VOICE_MAX}. Doors give the rest. Space: practise again.` : `Practice done. Voice ${v} of ${VOICE_MAX}. Space: practise again.`, 5000);

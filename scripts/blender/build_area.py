@@ -829,7 +829,9 @@ class Area:
             cx, cy, _ = tile_pos(x, y)
             wood = material('bench', p['bridge'], rough=0.7)
             dark = material('bench-dark', shade(p['bridge'], 0.6))
-            lamp = material('lamp', p['accent'], emission=p['accent'], rough=0.3)
+            # The lantern glass shares the doors' glow: kept in colour in a grey area and pulsed by the game,
+            # so the bench reads as a place to go, like a door.
+            lamp = material('door-glow', p['accent'], emission=p['accent'], rough=0.4)
             b = Builder('bench')
             # The seat faces the standing tile.
             along_x = ay != y
@@ -847,7 +849,7 @@ class Area:
             # A lantern post beside it so the bench reads from afar.
             lx, ly = cx + (0.0 if along_x else 0.0) + (0.62 if along_x else 0.0), cy + (0.0 if along_x else 0.62)
             props.cylinder((lx, ly, 0.6), 0.04, 1.2, dark, segments=6)
-            props.box((lx, ly, 1.26), (0.2, 0.2, 0.26), lamp, bevel=0.04)
+            props.box((lx, ly, 1.26), (0.24, 0.24, 0.3), lamp, bevel=0.04)
             props.box((lx, ly, 1.42), (0.26, 0.26, 0.06), dark, bevel=0.02)
             return obj
         return None
