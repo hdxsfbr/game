@@ -47,7 +47,11 @@ from another machine. The mic starts on a click.
 - `scripts/deploy.sh`: build, upload to the Railway `game` service, wait for the build and smoke-test the live URL (`--no-smoke` skips the last step).
 - `node scripts/screenshot3d.mjs [url] [outDir] [area] [x] [y]`: boots an area and walks a few
   steps each way, writing screenshots. `node scripts/inspect3d.mjs [url] [area] --eval js --shot f.png`
-  dumps the scene and runs probes against it.
+  dumps the scene and runs probes against it; `--query "ao=off&x=22&y=18"` adds URL parameters,
+  `--progress json` seeds saved progress (to see an area in colour), `--gpu` renders on the GPU with
+  vsync off for frame-rate measurements. `node scripts/mapshots.mjs [url] [outDir] [prefix] [area ...]`
+  shoots the kingdom map at desktop and phone sizes; `scripts/areashots.sh <outDir> [url]` takes
+  fixed-viewpoint shots of Tonic Town and the Jazz Quarter, grey and in colour.
 - `scripts/blender/build.sh [area ...]`: rebuilds the world glbs (`build_area.py`) and the
   placeholder mannequin (`build_mannequin.py`) with headless Blender; `build_sky.py` renders the
   skies. Blender 4.x is expected at `~/.local/opt/blender/blender` (or `$BLENDER`).
@@ -70,7 +74,11 @@ railway up --service game --detach
   and the Blender-built scenery), puzzle model and runner, lessons, palettes.
 - `src/scenes3d/`: the Babylon.js app, the world (loading, camera, sun and shadows, doors, gates,
   bench, fragment, exits, the puzzle flow), the player and rig, the grid collision, the colour
-  plugins (grey-to-colour life map, water, sky) and the sky dome.
+  plugins (grey-to-colour life map, water, sky) and the sky dome. Rendering: shadow map, SSAO2
+  ambient occlusion at half resolution (geometry buffer, 8 samples), then bloom and FXAA. The
+  occlusion costs about a third of a frame on a CPU renderer and is lost in the noise on a discrete
+  GPU; on a machine that cannot hold 40 fps over the first seconds it switches itself off for the
+  session. `?ao=on` and `?ao=off` on the URL force it either way.
 - `src/overlay/`: the HTML overlays: title, HUD, puzzle panel with piano and ladder, map, lessons,
   story cards, results.
 - `public/world/`, `public/sky/`, `public/character/`, `public/cards/`: generated assets, see

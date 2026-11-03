@@ -38,10 +38,14 @@ import { LifeMap, LifePlugin, WaterPlugin } from './colour';
 import { Grid } from './grid';
 import { SkyDome } from './sky';
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline';
+import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline';
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { hexToColor3, toStandard } from './materials';
 import { Player } from './Player';
 import { listeningStatus, playPrompt, playSongLayers } from './prompts';
+
+/** Where a slow machine's decision to drop the ambient occlusion is kept for the session. */
+const AO_KEY = 'listening-kingdom.ao';
 
 /** Camera offset from the player, in tiles: high and to the south, looking north over the player's shoulder. */
 const CAM_OFFSET = new Vector3(0, 7.6, 9.2);
@@ -129,6 +133,9 @@ export class World {
   private water: WaterPlugin | null = null;
   private sky!: SkyDome;
   private pipeline: DefaultRenderingPipeline | null = null;
+  private ssao: SSAO2RenderingPipeline | null = null;
+  /** Frame-time check for the ambient occlusion: null once decided. */
+  private aoCheck: { startAt: number; frames: number; ms: number } | null = null;
   private keys = new Set<string>();
   private camPos = new Vector3();
   private shakeUntil = 0;
@@ -245,6 +252,24 @@ export class World {
         lamp.intensity = 1.3;
         lamp.range = 4;
       }
+    }
+    // Ambient occlusion: a soft contact shadow where walls meet the ground and props meet the walls.
+    // It runs before bloom and FXAA. ?ao=off skips it, ?ao=on keeps it whatever the frame rate; otherwise
+    // the first seconds of play decide (see checkAo).
+    const aoParam = new URLSearchParams(location.search).get('ao');
+    const aoOff = aoParam === 'off' || (aoParam !== 'on' && sessionStorage.getItem(AO_KEY) === 'off');
+    if (!aoOff && SSAO2RenderingPipeline.IsSupported) {
+      this.ssao = new SSAO2RenderingPipeline('ssao', scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [this.camera], true);
+      this.ssao.radius = 1.1;
+      this.ssao.totalStrength = 1.25;
+      this.ssao.base = 0.1;
+      this.ssao.samples = 8;
+      this.ssao.maxZ = 40;
+      this.ssao.minZAspect = 0.3;
+      this.ssao.expensiveBlur = true;
+      this.ssao.bilateralSamples = 8;
+      this.ssao.bilateralSoften = 0.2;
+      if (aoParam !== 'on') this.aoCheck = { startAt: performance.now() + 2500, frames: 0, ms: 0 };
     }
     this.pipeline = new DefaultRenderingPipeline('pipe', false, scene, [this.camera]);
     this.pipeline.imageProcessingEnabled = false;
@@ -836,6 +861,7 @@ export class World {
   /** Called every frame by the app. dt in seconds, timeMs from performance.now(). */
   update(dt: number, timeMs: number): void {
     if (!this.ready || this.disposed) return;
+    if (this.aoCheck) this.checkAo(dt, timeMs);
 
     // Voice.
     let hz: number | null = null;
@@ -919,6 +945,25 @@ export class World {
     this.bubble.style.left = `${(p.x / w) * window.innerWidth}px`;
     this.bubble.style.top = `${(p.y / h) * window.innerHeight}px`;
     this.bubble.classList.remove('hidden');
+  }
+
+  /**
+   * Ambient occlusion costs a second geometry pass and a few screen-sized passes. After the world has
+   * settled, the average frame time over about three seconds decides: below 40 frames a second, it goes,
+   * for this area and the rest of the session.
+   */
+  private checkAo(dt: number, timeMs: number): void {
+    const c = this.aoCheck!;
+    if (timeMs < c.startAt || document.hidden) return;
+    c.frames++;
+    c.ms += dt * 1000;
+    if (c.ms < 3000) return;
+    this.aoCheck = null;
+    if (c.ms / c.frames > 1000 / 40 && this.ssao) {
+      this.ssao.dispose();
+      this.ssao = null;
+      sessionStorage.setItem(AO_KEY, 'off');
+    }
   }
 
   dispose(): void {

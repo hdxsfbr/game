@@ -135,6 +135,13 @@ def shade(h, k):
     return (f(r) << 16) | (f(g) << 8) | f(b)
 
 
+def mix(a, b, t):
+    """Blend sRGB hex colour a toward b by t in [0, 1]."""
+    ch = lambda h, sh: (h >> sh) & 255
+    f = lambda sh: int(ch(a, sh) + (ch(b, sh) - ch(a, sh)) * t)
+    return (f(16) << 16) | (f(8) << 8) | f(0)
+
+
 _materials = {}
 
 
@@ -416,47 +423,211 @@ class Area:
         wall = material('wall', p['wall'])
         top = material('wall-top', shade(p['wall'], 1.18))
         trim = material('wall-trim', shade(p['wall'], 0.72))
-        roof = material('roof', shade(p['accent'], 0.8), rough=0.85)
-        eave = material('eave', shade(p['wall'], 0.55))
+        # Per-block choices, keyed by the block's first tile, so a block can differ from the one above it too.
+        self.choices = {}
         for (x0, y, n) in self.wall_runs():
             # Split long runs into shorter blocks of varying height so a wall reads as buildings or cliff faces.
             x = x0
+            prev = None
             while x < x0 + n:
                 seg = min(x0 + n - x, 2 + int(hash2(x, y, 1) * 4))
                 near = any(self.walkable_near(xx, y, 1) for xx in range(x, x + seg))
-                hgt = (1.25 + 0.5 * hash2(x, y, 2)) if near else 0.9 + 0.3 * hash2(x, y, 5)
                 cx = x + seg / 2
                 cy = -(y + 0.5)
-                b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.09)
                 if self.style == 'town' and near:
-                    # Tonic Town: houses with pitched terracotta roofs and lit windows toward the street.
-                    # A dark eave under the overhang, the pitched roof, a ridge beam and a chimney.
-                    b.box((cx, cy, hgt - 0.04), (seg + 0.2, 1.16, 0.1), eave, bevel=0.02)
-                    b.wedge((cx, cy, hgt + 0.26), (seg + 0.16, 1.12, 0.52), roof, axis='x')
-                    b.box((cx, cy, hgt + 0.52), (seg + 0.2, 0.1, 0.06), trim, bevel=0.01)
-                    if hash2(x, y, 41) < 0.4:
-                        b.box((cx + (hash2(x, y, 42) - 0.5) * (seg - 0.6), cy + 0.25, hgt + 0.45), (0.22, 0.22, 0.5), trim, bevel=0.02)
-                    self.windows(b, x, y, seg, hgt)
+                    prev = self.town_house(b, x, y, seg, prev or self.choices.get((x, y - 1)))
+                    self.choices[(x, y)] = prev
+                elif self.style == 'jazz' and near:
+                    prev = self.jazz_facade(b, x, y, seg, prev or self.choices.get((x, y - 1)))
+                    self.choices[(x, y)] = prev
                 else:
+                    hgt = (1.25 + 0.5 * hash2(x, y, 2)) if near else 0.9 + 0.3 * hash2(x, y, 5)
+                    b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.09)
                     # A lighter cap and a dark plinth give the block a top and a base.
                     b.box((cx, cy, hgt + 0.03), (seg - 0.18, 0.82, 0.1), top, bevel=0.04)
-                if near:
-                    b.box((cx, cy, 0.06), (seg + 0.02, 1.02, 0.12), trim, bevel=0.03)
+                    if near:
+                        b.box((cx, cy, 0.06), (seg + 0.02, 1.02, 0.12), trim, bevel=0.03)
                 x += seg
         return b.build()
 
-    def windows(self, b, x, y, seg, hgt):
-        """Small warm windows on the faces of a house that look onto open ground."""
+    def pick(self, x, y, salt, n, avoid=None):
+        """A hashed choice among n, never the same as `avoid` (the neighbouring block's choice)."""
+        k = int(hash2(x, y, salt) * n) % n
+        if avoid is not None and n > 1 and k == avoid:
+            k = (k + 1 + int(hash2(x, y, salt + 100) * (n - 1))) % n
+        return k
+
+    def street_faces(self, xx, y):
+        """Sides of wall tile (xx, y) that look onto open ground: -1 is the map's south face, +1 the north."""
+        return [side for dy, side in ((1, -1), (-1, 1)) if self.at(xx, y + dy) != WALL]
+
+    # ----- Tonic Town houses
+
+    def town_house(self, b, x, y, seg, prev):
+        """One house of a terrace. Storeys, wall and roof tints, roof shape and window layout each differ from the neighbour's."""
+        p = self.p
+        prev = prev or {}
+        faces = sorted({side for xx in range(x, x + seg) for side in self.street_faces(xx, y)})
+        # The camera looks north, so a block whose only open face is its north one shows nothing but its
+        # roof and would hide the lane behind it: those stay single-storey. Free-standing rows stay under two.
+        storey = 0 if faces == [1] else self.pick(x, y, 31, 2 if len(faces) == 2 else 3, prev.get('storey'))
+        tint = self.pick(x, y, 32, 4, prev.get('tint'))
+        roof_k = self.pick(x, y, 33, 4, prev.get('roof'))
+        shape = self.pick(x, y, 34, 4, prev.get('shape'))
+        layout = self.pick(x, y, 35, 3, prev.get('layout'))
+        hgt = (1.15, 1.45, 1.8)[storey] + 0.1 * hash2(x, y, 36)
+        walls = (material('wall', p['wall']), material('wall-b', shade(p['wall'], 1.1)), material('wall-c', shade(p['wall'], 0.86)), material('wall-d', mix(p['wall'], p['accent'], 0.22)))
+        roofs = (material('roof', shade(p['accent'], 0.8), rough=0.85), material('roof-b', shade(p['accent'], 0.6), rough=0.85), material('roof-c', mix(p['accent'], p['wall'], 0.5), rough=0.85), material('roof-d', shade(p['wall'], 0.5), rough=0.85))
+        trim = material('wall-trim', shade(p['wall'], 0.72))
+        eave = material('eave', shade(p['wall'], 0.55))
+        wall = walls[tint]
+        roof = roofs[roof_k]
+        cx = x + seg / 2
+        cy = -(y + 0.5)
+        b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.09)
+        b.box((cx, cy, 0.06), (seg + 0.02, 1.02, 0.12), trim, bevel=0.03)
+        if shape == 3:
+            # A flat roof behind a parapet, sometimes with a chimney stack.
+            b.box((cx, cy, hgt + 0.06), (seg + 0.08, 1.04, 0.14), trim, bevel=0.02)
+            b.box((cx, cy, hgt + 0.02), (seg - 0.2, 0.8, 0.12), eave)
+            if hash2(x, y, 41) < 0.5:
+                b.box((cx + (hash2(x, y, 42) - 0.5) * (seg - 0.6), cy + 0.2, hgt + 0.35), (0.24, 0.24, 0.5), trim, bevel=0.02)
+        else:
+            # A dark eave under the overhang, a pitched roof (shallow, medium or steep), a ridge beam and maybe a chimney.
+            pitch = (0.3, 0.46, 0.66)[shape]
+            axis = 'y' if seg <= 2 and hash2(x, y, 43) < 0.5 else 'x'
+            b.box((cx, cy, hgt - 0.04), (seg + 0.2, 1.16, 0.1), eave, bevel=0.02)
+            b.wedge((cx, cy, hgt + pitch / 2), (seg + 0.16, 1.12, pitch), roof, axis=axis)
+            if axis == 'x':
+                b.box((cx, cy, hgt + pitch), (seg + 0.2, 0.1, 0.06), trim, bevel=0.01)
+            else:
+                # The gable faces the street.
+                b.box((cx, cy, hgt + pitch), (0.1, 1.16, 0.06), trim, bevel=0.01)
+            if hash2(x, y, 41) < 0.4:
+                b.box((cx + (hash2(x, y, 42) - 0.5) * (seg - 0.6), cy + 0.25, hgt + pitch * 0.8), (0.22, 0.22, 0.5), trim, bevel=0.02)
+        self.town_windows(b, x, y, seg, hgt, layout, storey)
+        return {'storey': storey, 'tint': tint, 'roof': roof_k, 'shape': shape, 'layout': layout}
+
+    def town_windows(self, b, x, y, seg, hgt, layout, storey):
+        """Warm windows and a front door on the faces of a house that look onto open ground.
+        Layouts: 0 a window per bay, 1 every other bay with shutters, 2 a wide shop window below."""
         p = self.p
         pane = material('window', 0xFFE2A0, emission=0xFFC46A, rough=0.3)
         frame = material('wall-trim', shade(p['wall'], 0.72))
-        for xx in range(x, x + seg):
-            for dy, side in ((1, -1), (-1, 1)):
-                if self.at(xx, y + dy) != WALL and hash2(xx, y, 21 + dy) < 0.6:
-                    cx, cy, _ = tile_pos(xx, y)
-                    wy = cy + side * 0.49
-                    b.box((cx, wy, hgt * 0.55), (0.3, 0.06, 0.34), frame, bevel=0.01)
-                    b.box((cx, wy + side * 0.01, hgt * 0.55), (0.22, 0.06, 0.26), pane)
+        shutter = material('shutter', shade(p['tree'], 0.75))
+        door = material('house-door', shade(p['bridge'], 0.55))
+        has_door = seg >= 2 and hash2(x, y, 45) < 0.65
+        door_tile = x + int(hash2(x, y, 44) * seg)
+        rows = [0.52] + ([hgt - 0.42] if storey >= 1 else [])
+        for i, xx in enumerate(range(x, x + seg)):
+            for side in self.street_faces(xx, y):
+                cx, cy, _ = tile_pos(xx, y)
+                wy = cy + side * 0.49
+                for row, z in enumerate(rows):
+                    if row == 0 and has_door and xx == door_tile:
+                        # The front door, with a lintel and a step.
+                        b.box((cx, wy + side * 0.01, 0.3), (0.34, 0.06, 0.56), door, bevel=0.01)
+                        b.box((cx, wy + side * 0.03, 0.6), (0.44, 0.08, 0.06), frame)
+                        b.box((cx, wy + side * 0.1, 0.03), (0.44, 0.2, 0.06), frame, bevel=0.01)
+                        continue
+                    if layout == 1 and (i + row) % 2 == 1:
+                        continue
+                    if layout == 2 and row == 0:
+                        b.box((cx, wy, z), (0.62, 0.06, 0.34), frame, bevel=0.01)
+                        b.box((cx, wy + side * 0.01, z), (0.54, 0.06, 0.26), pane)
+                        continue
+                    b.box((cx, wy, z), (0.3, 0.06, 0.34), frame, bevel=0.01)
+                    b.box((cx, wy + side * 0.01, z), (0.22, 0.06, 0.26), pane)
+                    if layout == 1:
+                        for sx in (-1, 1):
+                            b.box((cx + sx * 0.23, wy + side * 0.015, z), (0.1, 0.04, 0.3), shutter)
+
+    # ----- Jazz Quarter fronts
+
+    def jazz_facade(self, b, x, y, seg, prev):
+        """A street front for the quarter: brick courses, panelled bays or a plain front with a string course,
+        a cornice and parapet, doorways with a lamp, lit windows, shopfronts and neon."""
+        p = self.p
+        prev = prev or {}
+        faces = sorted({side for xx in range(x, x + seg) for side in self.street_faces(xx, y)})
+        # As in the town: blocks south of a lane stay low so they do not hide it from the camera.
+        storey = 0 if faces == [1] else self.pick(x, y, 51, 2 if len(faces) == 2 else 3, prev.get('storey'))
+        tint = self.pick(x, y, 52, 4, prev.get('tint'))
+        kind = self.pick(x, y, 53, 3, prev.get('kind'))
+        hgt = (1.4, 1.75, 2.1)[storey] + 0.1 * hash2(x, y, 54)
+        walls = (material('wall', p['wall']), material('brick', mix(p['wall'], p['accent'], 0.2)), material('wall-c', shade(p['wall'], 0.84)), material('wall-d', shade(p['wall'], 1.14)))
+        trim = material('wall-trim', shade(p['wall'], 0.72))
+        dark = material('sign-back', shade(p['wall'], 0.6))
+        cornice = material('cornice', shade(p['wall'], 1.25))
+        pane_w = material('window', 0xFFE2A0, emission=0xFFC46A, rough=0.3)
+        pane_c = material('window-cool', 0xBFD8FF, emission=mix(p['water'], 0xFFFFFF, 0.3), rough=0.3)
+        door_m = material('club-door', shade(p['accent'], 0.35))
+        lamp = material('lamp', p['accent'], emission=p['accent'], rough=0.3)
+        awning = material('awning-dark', shade(p['accent'], 0.5))
+        neon = (material('neon', p['accent'], emission=p['accent'], rough=0.3), material('neon-blue', p['water'], emission=p['water'], rough=0.3), material('neon-gold', 0xFFD36A, emission=0xFFB347, rough=0.3))
+        wall = walls[tint]
+        cx = x + seg / 2
+        cy = -(y + 0.5)
+        b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.06)
+        b.box((cx, cy, 0.06), (seg + 0.02, 1.02, 0.12), trim, bevel=0.03)
+        # Cornice and parapet.
+        b.box((cx, cy, hgt + 0.02), (seg + 0.1, 1.08, 0.1), cornice, bevel=0.02)
+        b.box((cx, cy, hgt + 0.12), (seg - 0.1, 0.9, 0.12), wall)
+        for side in faces:
+            wy = cy + side * 0.49
+            if kind == 0:
+                # Brick courses: thin shadow lines across the face.
+                z = 0.24
+                while z < hgt - 0.2:
+                    b.box((cx, wy + side * 0.005, z), (seg - 0.1, 0.02, 0.02), trim, smooth=False)
+                    z += 0.21
+            elif kind == 1:
+                # Pilasters between the bays.
+                for px in [x + 0.07] + list(range(x + 1, x + seg)) + [x + seg - 0.07]:
+                    b.box((px, wy + side * 0.03, hgt / 2), (0.08, 0.06, hgt - 0.12), trim)
+            else:
+                # A string course at the first floor.
+                b.box((cx, wy + side * 0.02, 0.98), (seg - 0.08, 0.05, 0.05), cornice)
+        has_door = seg >= 2 and hash2(x, y, 55) < 0.55
+        door_tile = x + int(hash2(x, y, 56) * seg)
+        rows = [0.6] + ([hgt - 0.5] if storey >= 1 else [])
+        for i, xx in enumerate(range(x, x + seg)):
+            for side in self.street_faces(xx, y):
+                cx1, cy1, _ = tile_pos(xx, y)
+                wy = cy1 + side * 0.49
+                lit = hash2(xx, y, 57 + side) < 0.7
+                pane = pane_w if hash2(xx, y, 58) < 0.5 else pane_c
+                for row, z in enumerate(rows):
+                    if row == 0 and has_door and xx == door_tile:
+                        # A doorway: dark recess, lintel, a step and a lamp above.
+                        b.box((cx1, wy + side * 0.01, 0.38), (0.44, 0.06, 0.72), door_m, bevel=0.01)
+                        b.box((cx1, wy + side * 0.04, 0.78), (0.56, 0.1, 0.07), trim)
+                        b.box((cx1, wy + side * 0.12, 0.03), (0.6, 0.24, 0.06), trim, bevel=0.01)
+                        b.box((cx1, wy + side * 0.08, 0.9), (0.1, 0.16, 0.06), trim)
+                        b.sphere((cx1, wy + side * 0.15, 0.86), 0.05, lamp, subdiv=1)
+                        continue
+                    if row == 0 and kind == 2:
+                        # Shopfront glass under a small awning.
+                        b.box((cx1, wy, 0.55), (0.7, 0.06, 0.5), trim, bevel=0.01)
+                        b.box((cx1, wy + side * 0.01, 0.55), (0.62, 0.06, 0.42), pane if lit else dark)
+                        if hash2(xx, y, 59) < 0.5:
+                            b.box((cx1, wy + side * 0.17, 0.84), (0.76, 0.34, 0.03), awning)
+                        continue
+                    b.box((cx1, wy, z), (0.32, 0.06, 0.4), trim, bevel=0.01)
+                    b.box((cx1, wy + side * 0.01, z), (0.24, 0.06, 0.32), pane if lit else dark)
+        for side in faces:
+            wy = cy + side * 0.49
+            k = hash2(x, y, 60 + side)
+            if k < 0.3:
+                # A blade sign at the block's end: stacked neon bars on a dark board, out over the street.
+                sx = x + 0.3 if hash2(x, y, 61) < 0.5 else x + seg - 0.3
+                b.box((sx, wy + side * 0.2, hgt * 0.62), (0.08, 0.36, 0.7), dark, bevel=0.01)
+                for j in range(4):
+                    b.box((sx, wy + side * 0.2, hgt * 0.62 - 0.24 + j * 0.16), (0.1, 0.24, 0.05), neon[(j + x) % 3])
+            elif k < 0.55:
+                # A neon strip under the cornice.
+                b.box((cx, wy + side * 0.03, hgt - 0.14), (seg - 0.3, 0.04, 0.05), neon[int(hash2(x, y, 62) * 3)])
+        return {'storey': storey, 'tint': tint, 'kind': kind}
 
     # ----- trees
 

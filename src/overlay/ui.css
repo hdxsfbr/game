@@ -623,9 +623,8 @@ body {
   justify-content: center;
 }
 .map canvas {
-  width: min(100vw, 177.7vh);
   height: auto;
-  aspect-ratio: 16 / 9;
+  max-width: 100vw;
 }
 .map-foot {
   position: absolute;
