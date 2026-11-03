@@ -1,7 +1,7 @@
 import { AudioEngine } from '../audio/engine';
 import { playCadence, playChord, playNote, playSequence } from '../audio/synth';
 import type { PuzzleRunner } from '../world/puzzleRunner';
-import { CHORD_NAMES, CHORD_TONES, type Step } from '../world/puzzles';
+import { CHORD_NAMES, CHORD_TONES, TONE_NAMES, type Step } from '../world/puzzles';
 
 /** The sound of each kind of prompt, carried over from the 2D game. Resolves when the player may answer. */
 
@@ -88,14 +88,14 @@ function playDegreePrompt(r: PuzzleRunner, step: Step, slow: boolean, again: boo
   const k = slow ? 1.3 : 1;
   const tonic = step.refMidi;
   let end = engine.now;
-  if (step.mode === 'melody' && r.stepIndex > 0 && !slow && !again) {
+  if (step.mode === 'melody' && r.stepIndex > 0 && r.misses === 0 && !again) {
     engine.setDuck(0.12);
     return Promise.resolve();
   }
   if (step.mode === 'melody') {
     const n = r.stepIndex + 1;
     // The key comes first except after a miss mid-tune, when it is already in the ear and the tune is enough.
-    const key = !(slow && n > 1);
+    const key = !(r.misses > 0 && n > 1);
     const kk = slow ? 1.15 : 1;
     setStatus(n > 1 ? `${key ? 'The key, then the' : 'The'} whole tune${slow ? ', slower' : ''}. You are on note ${n}…` : slow ? 'The key, then the tune again, slower…' : 'Listen to the key, then the tune…');
     end = key ? playCadence(tonic, { at: engine.now + 0.08, speed: kk }) : engine.now + 0.08;
@@ -115,20 +115,22 @@ export function listeningStatus(r: PuzzleRunner): string {
   if (step.spec.kind === 'chordName') return `Chord ${r.stepIndex + 1} of ${r.stepCount}. Which is it?`;
   if (step.spec.kind === 'chordTone') {
     const s = step.spec;
-    return `That chord is a ${CHORD_NAMES[s.quality].toLowerCase()}. Sing its ${s.tone === 3 ? 'third' : s.tone === 5 ? 'fifth' : 'seventh'}, or find it on the keys, then Enter.`;
+    const tries = r.triesLeft > 0 && r.misses > 0 ? ` ${r.triesLeft} ${r.triesLeft === 1 ? 'try' : 'tries'} left before you hear it.` : '';
+    return `That chord is a ${CHORD_NAMES[s.quality].toLowerCase()}. Sing its ${TONE_NAMES[s.tone]}, or find it on the keys, then Enter.${tries}`;
   }
   if (step.spec.kind === 'resolve') return 'Your turn: the one. Sing it, or find it on the keys, then Enter.';
   if (step.spec.kind === 'degree') {
     if (step.mode === 'melody') return `Your turn: note ${r.stepIndex + 1} of ${r.stepCount}. Sing it, or keys then Enter. Space: the whole tune again.`;
-    if (step.mode === 'echo' || r.misses > 0) return 'Your turn: give the note back. Sing it, or keys then Enter.';
+    if (step.mode === 'echo' || r.hintLevel >= 1) return 'Your turn: give the note back. Sing it, or keys then Enter.';
     return `Your turn: ${step.label}. Sing it, or find it on the keys, then Enter.`;
   }
   if (step.mode === 'echo') {
     if (r.stepCount === 1) return 'Your turn: give the note back. Sing it, or keys then Enter.';
     return step.part === 'first' ? 'Your turn: give back the first note. Sing it, or keys then Enter.' : 'Your turn: now the second note. Sing it, or keys then Enter.';
   }
-  if (r.misses > 0) return 'Your turn: give back the second note. Sing it, or keys then Enter.';
-  return `Your turn: ${step.label.toLowerCase()} above it. Sing it, or find it on the keys, then Enter.`;
+  if (r.hintLevel >= 1) return 'Your turn: give back the second note. Sing it, or keys then Enter.';
+  const tries = r.misses > 0 ? ` ${r.triesLeft} ${r.triesLeft === 1 ? 'try' : 'tries'} left before you hear it.` : '';
+  return `Your turn: ${step.label.toLowerCase()} above it. Sing it, or find it on the keys, then Enter.${tries}`;
 }
 
 /** The song's harmony, one triad per bar of four notes, as offsets from the tonic. */

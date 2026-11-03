@@ -1,6 +1,7 @@
 import { uiClick } from '../audio/sfx';
 import { playSequence } from '../audio/synth';
 import { progress } from '../state';
+import { AREAS, type DoorDef } from '../world/areas';
 import { clear, el } from './dom';
 
 interface Row {
@@ -57,7 +58,9 @@ export class Results {
       dot.style.background = m.color;
       const text = el('div', 'results-text');
       text.append(el('div', 'results-name', r.name), el('div', 'results-lesson', r.lesson));
-      const score = el('div', 'results-score', `${m.name}  ·  ${misses} miss${misses === 1 ? '' : 'es'}`);
+      const doors = AREAS[r.area].entities.filter((e): e is DoorDef => e.kind === 'door');
+      const stars = doors.reduce((n, d) => n + (progress.scores?.[d.puzzle.id] ?? 0), 0);
+      const score = el('div', 'results-score', `${m.name}  ·  ★ ${stars} of ${doors.length * 3}  ·  ${misses} miss${misses === 1 ? '' : 'es'}`);
       score.style.color = m.color;
       row.append(dot, text, score);
       box.append(row);

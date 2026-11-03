@@ -495,8 +495,11 @@ export class World {
     } else this.keys.delete(e.code);
   }
 
+  /** Where the player is heading, eased, so the camera leads a little into the walk. */
+  private lookAhead = new Vector3();
+
   private placeCamera(k: number): void {
-    const target = this.player.root.position.add(CAM_OFFSET);
+    const target = this.player.root.position.add(CAM_OFFSET).addInPlace(this.lookAhead);
     this.camPos.addInPlace(target.subtract(this.camPos).scale(k));
     const jitter = performance.now() < this.shakeUntil ? new Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, 0) : Vector3.Zero();
     this.camera.position.copyFrom(this.camPos).addInPlace(jitter);
@@ -686,7 +689,7 @@ export class World {
       onSolved: () => (d ? this.onSolved(d) : this.onDrillSolved()),
       onMiss: (midi) => this.onMiss(midi),
     });
-    if (!d) runner.hintOffset = 1;
+    runner.hintOffset = d ? -2 : 1;
     this.runner = runner;
     MusicPlayer.get().setPaused(true);
     panelOpen();
@@ -786,7 +789,8 @@ export class World {
     const dist = (((midi - r.step.refMidi) % 12) + 12) % 12;
     const target = r.step.targetMidi - r.step.refMidi;
     const dir = dist < target || (target === 12 && dist === 0) ? 'a little higher' : 'a little lower';
-    this.panel.setStatus(r.hintLevel >= 3 ? 'The note is marked on the ladder. Match it.' : `Not that one. Try ${dir}.`);
+    const left = r.triesLeft;
+    this.panel.setStatus(r.hintLevel >= 3 ? 'The note is marked on the ladder. Match it.' : left > 0 ? `Not that one. Try ${dir}. ${left} ${left === 1 ? 'try' : 'tries'} left before you hear it.` : `Not that one. Try ${dir}.`);
     playNote(midi, { timbre: 'bass', duration: 0.25, gain: 0.25 });
     this.shake();
     return this.wait(700);
@@ -817,6 +821,8 @@ export class World {
     d.solved = true;
     this.setVoice(VOICE_MAX);
     if (!progress.solved.includes(d.def.puzzle.id)) progress.solved.push(d.def.puzzle.id);
+    const stars = Math.round(this.runner!.points / q.steps.length);
+    progress.scores[d.def.puzzle.id] = stars;
     for (const t of d.def.tiles) this.grid.setBlocked(t.x, t.y, false);
     // The door sinks into the ground and is gone.
     for (const ms of d.tiles) for (const m of ms) this.slide(m, m.position.add(new Vector3(0, -1.8, 0)), 700, () => m.setEnabled(false));
@@ -830,7 +836,8 @@ export class World {
     doorOpen(q.steps[0].refMidi);
     this.later(700, () => playSequence(q.steps.map((s) => s.targetMidi).concat([q.steps[0].targetMidi + 12]), { timbre: 'bell', duration: 0.3, gap: 0.14, gain: 0.45 }));
     this.endPuzzle(true);
-    this.toast(d.def.tiles.length > 1 ? 'The serpent lies down. A bridge.' : d.def.puzzle.id === 'jazz-boss' ? 'The band plays the whole set. The door is yours.' : 'The way opens.');
+    const starText = '  ' + '★'.repeat(stars) + '☆'.repeat(3 - stars);
+    this.toast((d.def.tiles.length > 1 ? 'The serpent lies down. A bridge.' : d.def.puzzle.id === 'jazz-boss' ? 'The band plays the whole set. The door is yours.' : 'The way opens.') + starText, 4000);
     saveProgress(progress);
   }
 
@@ -948,6 +955,9 @@ export class World {
       if (k.has('ArrowDown') || k.has('KeyS')) dz += 1;
     }
     const moving = dx !== 0 || dz !== 0;
+    // The camera leads into the walk by about a tile and settles back when the player stops.
+    const ahead = moving ? new Vector3(dx * 1.3, 0, dz * 1.3) : Vector3.Zero();
+    this.lookAhead.addInPlace(ahead.subtract(this.lookAhead).scale(Math.min(1, dt * 2.2)));
     if (moving) {
       if (dx && dz) (dx *= Math.SQRT1_2), (dz *= Math.SQRT1_2);
       const step = WALK_SPEED * dt;

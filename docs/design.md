@@ -94,8 +94,9 @@ Two question forms (decided 2026-11-01 after Andre's first playtest):
   tutorial door and the first bridge use it, because echoing the last note heard teaches nothing
   about the interval.
 - *Produce*: the door plays only the reference and names the interval; the player must find the
-  note by ear. Every other door uses it. A miss replays the prompt as an echo, slower, so the
-  answer is heard before the ladder shows it.
+  note by ear. Every other door uses it. The first two misses replay the reference alone (with a
+  higher/lower nudge and the tries left); from the third miss the prompt becomes an echo, slower, so
+  the answer is heard before the ladder shows it (decided 2026-11-03 after Andre's second playtest).
 The early doors always start from C4 so the ear anchors to one reference. The serpent moves the
 root (G3 to D4) so the skill proves relative, not memorised.
 1. Tutorial door in the hub: unison.
@@ -119,21 +120,24 @@ Built 2026-11-01.
 4. The clock tower: echo mode, three random degrees in a random key (G3 to D4). Degrees missed
    before anywhere in the game are weighted to come up more often (progress.misses).
 5. Boss: the Mayor's Choir. Melody mode: cadence, then a four-note tune from a small set, played
-   once in a random key. The player gives it back note by note with no replay between notes; a
-   miss replays the whole tune slower. Each correct note is answered by a pad voice, the choir.
+   once in a random key. The player gives it back note by note; Space plays the key and the whole
+   tune again, and a miss replays the whole tune slower. Correct notes are confirmed in the status
+   line, not echoed (an echoed single note read as a new prompt in the 2026-11-03 playtest).
 Progression reward: melody fragment 2. The key change proves the skill is relative.
 
 ### Area 3: Jazz Quarter (about 4 minutes)
 Teaches: chord quality by ear. The four seventh chords that cover most of jazz, plus the ii-V-I.
 Every chord prompt is a block chord on a pad with the root in the bass. Pipes use the chromatic
 layout from the root. Built 2026-11-01. Entered from the hub's right wall (opens with the Valley).
-1. The club door: two steps on one root (C). Major seventh, sing the third; then minor seventh,
-   sing the third.
-2. The alley: dominant seventh, sing the seventh; then major seventh, sing the seventh. Root C.
-3. The cellar: minor seventh, sing the fifth; then half-diminished, sing the fifth. Random root
-   (G3 to D4), because by now the ear should carry the quality, not the pitch.
-4. The band stand: four chords in random keys, no two of the same quality in a row. Answered by
+Order reworked 2026-11-03: naming a quality is the easier skill and what the bench teaches, so it
+comes first, and singing the chord's notes comes before picking one note out of it.
+1. The club door: four chords in random keys, no two of the same quality in a row. Answered by
    pressing 1 to 4 or clicking a sign; no singing. Misses: replay note by note, then the sign lights.
+2. The alley: the chord sung one note at a time, root, third, fifth, seventh, on one root: a major
+   seventh, then a minor seventh (`arpeggio` steps, expanded to four chordTone steps each).
+3. The cellar: major seventh, sing the third; then minor seventh, sing the third.
+4. The band stand: dominant seventh, sing the seventh; major seventh, sing the seventh; minor
+   seventh, sing the fifth; half-diminished, sing the fifth.
 5. Boss, the Last Set: the band plays ii then V in a random key and stops; the player supplies the I.
    Twice, in two keys. On each success the band lands the I with the player's note on top.
 Hint ladder here: miss 1 plays the chord note by note and then the asked note; miss 2 stacks the
@@ -148,15 +152,26 @@ by bar as the areas did: bass from the first bar (Valley), pad chords from the s
 horn doubling the tune from the third (Quarter). On the last note the whole song plays with every
 layer, colour floods the stage, and every area is coloured from then on (progress.finished).
 Results screen: time from the first Sing/Play click, misses per area with gold (0-2), silver (3-6)
-or bronze medals, the one sentence each area taught, and buttons to walk the kingdom or start over.
+or bronze medals, stars per area, the one sentence each area taught, and buttons to walk the
+kingdom or start over.
+
+## Stars (added 2026-11-03)
+
+Each step of a door is worth 3 points on the first try, 2 on the second, 1 on the third, and 0 once
+the answer has been played. A door's stars are the average over its steps, rounded. They show in
+the toast when the door opens, on the map beside the opened door, and summed per area on the
+results. Benches award none. An opened door can be sung again (Space) with no voice at stake and
+no change to its stars.
 
 ## Hint ladder (every puzzle)
 
-- Miss 1: replay the sound, slower.
-- Miss 2: replay, and show the "distance ladder" (area 1), the scale staircase with the tonic lit
-  (area 2), or the chord's notes stacked (area 3). The player's attempt is marked on it.
-- Miss 3: the target lights up on the ladder. The player can now copy it. Progress continues, the
-  medal for that puzzle is bronze.
+At a door (`hintOffset` -2 in PuzzleRunner):
+- Misses 1 and 2: the reference again, a higher/lower nudge, and the tries left. Each costs voice.
+- Miss 3: replay the sound with the answer, slower.
+- Miss 4: replay, and show the "distance ladder" (area 1), the scale staircase with the tonic lit
+  (area 2), or the chord's notes stacked (area 3). The player's attempts are marked on it.
+- Miss 5: the target lights up on the ladder. The player can now copy it. Progress continues.
+At a bench (`hintOffset` 1) help comes two misses sooner and misses cost nothing.
 Nothing hard-blocks. The brief wants a complete experience for a new player, not a wall.
 
 ## Voice and practice benches (decided 2026-11-02)

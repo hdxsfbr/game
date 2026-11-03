@@ -32,8 +32,13 @@ export class PuzzleRunner {
   phase: Phase = 'idle';
   /** The note last tried on the pipes and not yet answered with. */
   pending: number | null = null;
-  /** Added to the miss count for the hint ladder. Drills set 1 so help comes a miss sooner. */
+  /**
+   * Added to the miss count for the hint ladder. Drills set 1 so help comes a miss sooner; doors set -2 so
+   * the player gets three tries on the reference alone before the answer is played.
+   */
   hintOffset = 0;
+  /** Points for the steps solved so far: 3 for a first try, one less per miss before the answer was heard. */
+  points = 0;
   private stable = new StableNoteDetector();
   private generation = 0;
 
@@ -50,9 +55,14 @@ export class PuzzleRunner {
     return this.question.steps.length;
   }
 
-  /** 0: nothing. 1: slower replay. 2: ladder with attempts. 3: target shown. */
+  /** 0: nothing. 1: slower replay with the answer. 2: ladder with attempts. 3: target shown. */
   get hintLevel(): number {
-    return Math.min(3, this.misses === 0 ? 0 : this.misses + this.hintOffset);
+    return Math.max(0, Math.min(3, this.misses === 0 ? 0 : this.misses + this.hintOffset));
+  }
+
+  /** Tries left before the answer is played, or 0 once it has been. */
+  get triesLeft(): number {
+    return Math.max(0, 1 - this.hintOffset - this.misses);
   }
 
   get candidate(): { midi: number; progress: number } | null {
@@ -113,6 +123,7 @@ export class PuzzleRunner {
     this.phase = 'prompting';
     if (ok) {
       const index = this.stepIndex;
+      this.points += this.hintLevel >= 1 ? 0 : Math.max(0, 3 - this.misses);
       await this.hooks.onStepSolved(index);
       if (gen !== this.generation) return;
       this.stepIndex++;
@@ -138,7 +149,7 @@ export class PuzzleRunner {
     this.phase = 'prompting';
     this.pending = null;
     this.stable.reset();
-    await this.hooks.playPrompt(this.step, this.misses > 0, again);
+    await this.hooks.playPrompt(this.step, this.hintLevel >= 1, again);
     if (gen !== this.generation || this.phase !== 'prompting') return;
     this.phase = 'listening';
     this.hooks.onListening();

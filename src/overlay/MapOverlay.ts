@@ -165,13 +165,22 @@ export class MapOverlay {
         const c = at(e.tiles[0]);
         if (solved) {
           g.strokeStyle = colorToCss(p.accent);
-          g.globalAlpha = 0.6;
+          g.globalAlpha = 0.7;
           g.lineWidth = 2;
           g.beginPath();
           g.arc(c.x, c.y, r, 0, Math.PI * 2);
           g.stroke();
+          // A tick inside the ring.
+          g.beginPath();
+          g.moveTo(c.x - r * 0.5, c.y);
+          g.lineTo(c.x - r * 0.1, c.y + r * 0.45);
+          g.lineTo(c.x + r * 0.55, c.y - r * 0.45);
+          g.stroke();
           g.globalAlpha = 1;
           block(c.x, c.y, r + 1);
+          const stars = progress.scores[e.puzzle.id];
+          const starText = stars === undefined ? '' : '  ' + '★'.repeat(stars) + '☆'.repeat(3 - stars);
+          label(c.x, c.y, r + 3, e.puzzle.title + starText, '#8f8a80', 12, FONT, doorSides);
         } else {
           g.fillStyle = colorToCss(p.accent);
           g.beginPath();
@@ -251,6 +260,24 @@ export class MapOverlay {
     label(me.x, me.y, r * 2 + 2, 'you', '#ffffff', 13, FONT, ['b', 'a', 'r', 'l']);
 
     this.placeLabels(width, height);
+
+    // Legend, bottom left of the canvas.
+    g.font = `12px ${MONO}`;
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    const ly = height - 14;
+    g.fillStyle = colorToCss(p.accent);
+    g.beginPath();
+    g.arc(24 + 5, ly, 5, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#b9b2a6';
+    g.fillText('door still to open', 24 + 16, ly);
+    g.strokeStyle = colorToCss(p.accent);
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(24 + 160 + 5, ly, 5, 0, Math.PI * 2);
+    g.stroke();
+    g.fillText('opened, with its stars', 24 + 160 + 16, ly);
   }
 
   /** Lay the queued labels out around their markers and draw them, with leader lines where they had to move. */
