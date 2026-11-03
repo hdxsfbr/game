@@ -73,7 +73,7 @@ export class App {
     );
     this.world = world;
     this.canvas.focus();
-    if (import.meta.env.DEV) (window as unknown as { __lk: unknown }).__lk = world;
+    (window as unknown as { __lk: unknown }).__lk = world; // read by scripts/smoke.mjs and playthrough.mjs
     await this.setFade(false, 500);
   }
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Smoke-test a deployed build: the page loads, the game boots, Play enters the world, no console errors.
 // Usage: node scripts/smoke.mjs <baseUrl> [outDir]
+// SMOKE_READY_MS (default 30000) caps how long the world may take to load after Play.
 import puppeteer from 'puppeteer-core';
 import { execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -32,8 +33,11 @@ await page.screenshot({ path: `${out}/01-title.png` });
 
 // Play enters the world with the keys; the world is ready once the glb and the character are in.
 await page.click('#btn-play');
-for (let i = 0; i < 150; i++) { if (await page.evaluate(() => !!(window.__lk && window.__lk.ready))) break; await sleep(200); }
-if (!(await page.evaluate(() => !!(window.__lk && window.__lk.ready)))) throw new Error('world never became ready');
+const readyMs = Number(process.env.SMOKE_READY_MS ?? 30000);
+const t0 = Date.now();
+for (let i = 0; i < readyMs / 200; i++) { if (await page.evaluate(() => !!(window.__lk && window.__lk.ready))) break; await sleep(200); }
+if (!(await page.evaluate(() => !!(window.__lk && window.__lk.ready)))) throw new Error(`world never became ready in ${readyMs} ms; console errors: ${JSON.stringify(errors)}`);
+console.log(`world ready after ${Date.now() - t0} ms`);
 await sleep(800);
 if (await page.evaluate(() => !!(window.__lk.storyCard && window.__lk.storyCard.visible))) { await page.keyboard.press('Space'); await sleep(600); }
 await page.screenshot({ path: `${out}/02-world.png` });

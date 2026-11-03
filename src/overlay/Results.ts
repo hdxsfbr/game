@@ -72,11 +72,11 @@ export class Results {
     this.root.append(box);
     this.root.classList.remove('hidden');
     setTimeout(() => playSequence([60, 64, 67, 72, 76], { timbre: 'bell', duration: 0.35, gap: 0.16, gain: 0.4 }), 300);
-    if (import.meta.env.DEV) (window as unknown as { __lkResults: boolean }).__lkResults = true;
+    (window as unknown as { __lkResults: boolean }).__lkResults = true;
   }
 
   hide(): void {
     this.root.classList.add('hidden');
-    if (import.meta.env.DEV) (window as unknown as { __lkResults: boolean }).__lkResults = false;
+    (window as unknown as { __lkResults: boolean }).__lkResults = false;
   }
 }
