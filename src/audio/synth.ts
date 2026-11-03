@@ -1,7 +1,7 @@
 import { midiToHz } from '../ear/pitchMath';
 import { AudioEngine } from './engine';
 
-export type Timbre = 'pipe' | 'bell' | 'pad' | 'bass' | 'horn';
+export type Timbre = 'pipe' | 'bell' | 'pad' | 'bass' | 'horn' | 'chord';
 
 export interface NoteOptions {
   timbre?: Timbre;
@@ -22,12 +22,17 @@ interface Envelope {
   release: number;
 }
 
-const TIMBRES: Record<Timbre, { wave: OscillatorType; env: Envelope; cutoff: number; detune: number[]; breath: number }> = {
+const TIMBRES: Record<Timbre, { wave: OscillatorType; env: Envelope; cutoff: number; detune: number[]; breath: number; level?: number }> = {
   pipe: { wave: 'triangle', env: { attack: 0.03, decay: 0.1, sustain: 0.8, release: 0.15 }, cutoff: 2200, detune: [0], breath: 0.05 },
   bell: { wave: 'sine', env: { attack: 0.005, decay: 0.4, sustain: 0.25, release: 0.6 }, cutoff: 6000, detune: [0, 1201], breath: 0 },
   pad: { wave: 'sawtooth', env: { attack: 0.25, decay: 0.3, sustain: 0.7, release: 0.5 }, cutoff: 1200, detune: [-7, 0, 7], breath: 0 },
   bass: { wave: 'square', env: { attack: 0.01, decay: 0.15, sustain: 0.5, release: 0.2 }, cutoff: 500, detune: [0], breath: 0 },
   horn: { wave: 'sawtooth', env: { attack: 0.06, decay: 0.2, sustain: 0.6, release: 0.3 }, cutoff: 2600, detune: [-4, 4], breath: 0.02 },
+  // Block chords: one clean voice per note, a quick attack and a short tail, so stacked notes stay
+  // separate and one chord has stopped before the next begins. The pad's detuned saws beat against
+  // each other and ring for half a second, which blurred chord after chord into one.
+  // level: a clean triangle loses little to the filter, so four of them at the pad's gains would clip.
+  chord: { wave: 'triangle', env: { attack: 0.03, decay: 0.35, sustain: 0.55, release: 0.12 }, cutoff: 3600, detune: [0], breath: 0, level: 0.45 },
 };
 
 let noiseBuffer: AudioBuffer | null = null;
@@ -46,7 +51,7 @@ export function playNote(midi: number, opts: NoteOptions = {}): number {
   const { ctx } = engine;
   const timbre = TIMBRES[opts.timbre ?? 'pipe'];
   const duration = opts.duration ?? 1;
-  const peak = opts.gain ?? 0.6;
+  const peak = (opts.gain ?? 0.6) * (timbre.level ?? 1);
   const t0 = opts.at ?? ctx.currentTime;
   const { attack, decay, sustain, release } = timbre.env;
   const hz = midiToHz(midi);
@@ -117,7 +122,7 @@ export function playSequence(midis: number[], opts: NoteOptions & { gap?: number
   return end;
 }
 
-/** I, IV, V, I in the key of `tonicMidi`, as a soft pad. Returns the end time. */
+/** I, IV, V, I in the key of `tonicMidi`, as block chords. Returns the end time. */
 export function playCadence(tonicMidi: number, opts: { at?: number; gain?: number; speed?: number } = {}): number {
   const engine = AudioEngine.get();
   const k = opts.speed ?? 1;
@@ -132,7 +137,7 @@ export function playCadence(tonicMidi: number, opts: { at?: number; gain?: numbe
   ];
   let end = t0;
   chords.forEach((c, i) => {
-    end = playChord(c.map((n) => tonicMidi + n - 12), { timbre: 'pad', at: t0 + i * beat, duration: beat * 0.9, gain });
+    end = playChord(c.map((n) => tonicMidi + n - 12), { timbre: 'chord', at: t0 + i * beat, duration: beat * 0.72, gain });
   });
   return end;
 }

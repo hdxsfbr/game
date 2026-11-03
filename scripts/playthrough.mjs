@@ -165,7 +165,8 @@ async function solveDoor(id, { wrong = 0, shotName = null, click = false } = {})
     const alt = s.kind === 'degree' ? MAJOR[(MAJOR.indexOf(semis) + 2 + w) % 7] : (semis + 3 + w) % 8;
     const altQ = QUALITIES[(QUALITIES.indexOf(s.quality) + 1 + w) % 4];
     await answer(s, alt, altQ);
-    s = await waitFor((st) => st.misses === w + 1 && st.phase === 'listening', 15000, `${id} miss ${w + 1}`);
+    // A miss at a melody door replays the whole tune, up to twelve seconds for the song.
+    s = await waitFor((st) => st.misses === w + 1 && st.phase === 'listening', 25000, `${id} miss ${w + 1}`);
     if (shotName) await shot(`${shotName}-miss${w + 1}`);
   }
   for (let presses = 0; presses < 24; presses++) {

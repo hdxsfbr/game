@@ -79,7 +79,9 @@ railway up --service game --detach
   ambient occlusion at half resolution (geometry buffer, 8 samples), then bloom and FXAA. The
   occlusion costs about a third of a frame on a CPU renderer and is lost in the noise on a discrete
   GPU; on a machine that cannot hold 40 fps over the first seconds it switches itself off for the
-  session. `?ao=on` and `?ao=off` on the URL force it either way.
+  session. `?ao=on` and `?ao=off` on the URL force it either way. The one world material without the
+  grey-to-colour plugin is `door-glow`, the strip on every closed door, which the world pulses so a door
+  reads from across a grey area.
 - `src/overlay/`: the HTML overlays: title, HUD, puzzle panel with piano and ladder, map, lessons,
   story cards, results.
 - `public/world/`, `public/sky/`, `public/character/`, `public/cards/`: generated assets, see

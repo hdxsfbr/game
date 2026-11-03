@@ -14,7 +14,7 @@ export interface Demo {
   cadence?: boolean;
   /** Seconds per beat of a tune, or between chords. Default 0.42. */
   gap?: number;
-  timbre?: 'pipe' | 'bell' | 'pad' | 'bass' | 'horn';
+  timbre?: 'pipe' | 'bell' | 'pad' | 'bass' | 'horn' | 'chord';
 }
 
 export interface LessonPage {

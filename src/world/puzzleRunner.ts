@@ -4,8 +4,8 @@ import type { ChordQuality, Question, Step } from './puzzles';
 export type Phase = 'idle' | 'prompting' | 'listening' | 'done';
 
 export interface RunnerHooks {
-  /** Play the step's prompt. Resolve when the player may answer. */
-  playPrompt(step: Step, slow: boolean): Promise<void>;
+  /** Play the step's prompt. Resolve when the player may answer. `again` is a replay the player asked for. */
+  playPrompt(step: Step, slow: boolean, again: boolean): Promise<void>;
   /** Called when a step is answered correctly. Resolve when the next prompt may begin. */
   onStepSolved(index: number): Promise<void>;
   onSolved(): void;
@@ -64,7 +64,7 @@ export class PuzzleRunner {
   }
 
   async replay(): Promise<void> {
-    if (this.phase === 'listening') await this.prompt();
+    if (this.phase === 'listening') await this.prompt(true);
   }
 
   abort(): void {
@@ -133,12 +133,12 @@ export class PuzzleRunner {
     }
   }
 
-  private async prompt(): Promise<void> {
+  private async prompt(again = false): Promise<void> {
     const gen = this.generation;
     this.phase = 'prompting';
     this.pending = null;
     this.stable.reset();
-    await this.hooks.playPrompt(this.step, this.misses > 0);
+    await this.hooks.playPrompt(this.step, this.misses > 0, again);
     if (gen !== this.generation || this.phase !== 'prompting') return;
     this.phase = 'listening';
     this.hooks.onListening();

@@ -223,7 +223,8 @@ export class MapOverlay {
         g.lineWidth = 1;
         g.strokeRect(c.x - r * 0.8, c.y - r * 0.8, r * 1.6, r * 1.6);
         block(c.x, c.y, r * 0.8 + 1);
-        label(c.x, c.y, r + 2, wide ? 'practice' : 'practice bench', '#9ad1c8', 12, MONO, wide ? ['a', 'b', 'l', 'r'] : ['l', 'r', 'a', 'b']);
+        const drilled = progress.drilled.includes(e.lesson) ? ' ✓' : '';
+        label(c.x, c.y, r + 2, (wide ? 'practice' : 'practice bench') + drilled, '#9ad1c8', 12, MONO, wide ? ['a', 'b', 'l', 'r'] : ['l', 'r', 'a', 'b']);
       } else if (e.kind === 'fragment' && !progress.solved.includes(e.id)) {
         const c = at(e.tile);
         g.fillStyle = '#f2c46d';

@@ -12,6 +12,7 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { CreatePolyhedron } from '@babylonjs/core/Meshes/Builders/polyhedronBuilder';
+import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { AssetContainer } from '@babylonjs/core/assetContainer';
 import '@babylonjs/loaders/glTF';
@@ -80,6 +81,8 @@ interface DoorView {
   /** Meshes per tile, in the order of def.tiles. */
   tiles: AbstractMesh[][];
   solved: boolean;
+  /** The ring on the ground at the door: pulsing in the accent while closed, steadily lit once opened. */
+  ring: Mesh | null;
 }
 
 interface GateView {
@@ -142,6 +145,11 @@ export class World {
   private transitioning = false;
   private doors: DoorView[] = [];
   private gates: GateView[] = [];
+  /** The shared material of every closed door's glowing edge (see build_area.py); pulsed each frame. */
+  private glow: StandardMaterial | null = null;
+  private glowBase = new Color3(0, 0, 0);
+  /** Singing an opened door again: no voice lost or gained, nothing recorded. */
+  private resing = false;
   private practice: PracticeDef | null = null;
   private fragment: Mesh | null = null;
   private fragmentT = 0;
@@ -240,6 +248,13 @@ export class World {
     // Colour: every world material mixes toward grey by the tile's life.
     this.lifeMap = new LifeMap(this.grid.w, this.grid.h, scene);
     for (const mat of this.matCache.values()) {
+      // The door glow is the one thing that keeps its colour in a grey area: it is what marks a door.
+      if (mat.name === 'door-glow') {
+        this.glow = mat;
+        this.glowBase = hexToColor3(this.palette.accent);
+        mat.diffuseColor = this.glowBase.scale(0.5);
+        continue;
+      }
       new LifePlugin(mat, this.lifeMap);
       if (mat.name === 'water') this.water = new WaterPlugin(mat);
     }
@@ -326,13 +341,14 @@ export class World {
           for (const t of e.tiles) this.grid.setBlocked(t.x, t.y, false);
           for (const ms of tiles) for (const m of ms) m.setEnabled(false);
         }
-        this.doors.push({ def: e, tiles, solved });
+        this.doors.push({ def: e, tiles, solved, ring: this.ringAt(e.tiles[0], solved) });
       } else if (e.kind === 'gate') {
         const tiles = e.tiles.map((_, i) => this.meshesNamed(`gate:${e.flag}:${i}`));
         this.gates.push({ def: e, tiles, open: false });
       } else if (e.kind === 'practice') {
         this.grid.setBlocked(e.tile.x, e.tile.y, true);
         this.practice = e;
+        if (progress.drilled.includes(e.lesson)) this.ringAt(e.tile, true);
       } else if (e.kind === 'fragment' && !progress.solved.includes(e.id)) {
         const gem = CreatePolyhedron('fragment', { type: 1, size: 0.22 }, this.scene);
         const mat = new StandardMaterial('fragment', this.scene);
@@ -350,6 +366,33 @@ export class World {
   /** Meshes whose glTF name starts with `prefix` (a node with several materials splits into `_primitiveN` meshes). */
   meshesNamed(prefix: string): AbstractMesh[] {
     return this.scene.meshes.filter((m) => m.name === prefix || m.name.startsWith(prefix + '_primitive') || m.name.startsWith(prefix + '.'));
+  }
+
+  /**
+   * A ring on the ground at a door or bench. Closed: it shares the doors' pulsing glow, so the door reads
+   * from any angle and across a grey area. Opened (or the bench's drill done): steadily lit, the trace that stays.
+   */
+  private ringAt(t: { x: number; y: number }, opened: boolean): Mesh {
+    const ring = CreateTorus(`ring:${t.x}:${t.y}`, { diameter: 0.92, thickness: 0.1, tessellation: 28 }, this.scene);
+    ring.position.set(t.x + 0.5, 0.05, t.y + 0.5);
+    ring.isPickable = false;
+    this.setRing(ring, opened);
+    return ring;
+  }
+
+  private setRing(ring: Mesh, opened: boolean): void {
+    if (!opened && this.glow) {
+      ring.material = this.glow;
+      return;
+    }
+    let mat = this.scene.getMaterialByName('opened-ring') as StandardMaterial | null;
+    if (!mat) {
+      mat = new StandardMaterial('opened-ring', this.scene);
+      mat.diffuseColor = hexToColor3(this.palette.accent).scale(0.6);
+      mat.emissiveColor = hexToColor3(this.palette.accent).scale(0.8);
+      mat.specularColor = Color3.Black();
+    }
+    ring.material = mat;
   }
 
   // ---------- helpers ----------
@@ -478,14 +521,14 @@ export class World {
     }
   }
 
+  /** The closest door within reach. An opened door counts too (it can be sung again), but a closed one wins. */
   private nearestDoor(): DoorView | null {
     const pt = this.playerTile();
     let best: DoorView | null = null;
     let bestD = 2.2;
     for (const d of this.doors) {
-      if (d.solved) continue;
       for (const t of d.def.tiles) {
-        const dist = Math.hypot(t.x - pt.x, t.y - pt.y);
+        const dist = Math.hypot(t.x - pt.x, t.y - pt.y) + (d.solved ? 1 : 0);
         if (dist < bestD) {
           bestD = dist;
           best = d;
@@ -530,12 +573,14 @@ export class World {
         t += len;
       });
     }
-    if (d.chord) t = playChord(d.chord.map((o) => base + o), { timbre: d.timbre ?? 'pad', at: t, duration: 1.4, gain: 0.8 });
+    if (d.chord) t = playChord(d.chord.map((o) => base + o), { timbre: d.timbre ?? 'chord', at: t, duration: 1.4, gain: 0.8 });
     if (d.chords) {
+      // Each chord stops, and a short rest passes, before the next one starts.
+      const gap = d.gap ?? 1.1;
       for (const c of d.chords) {
-        playNote(base - 12 + c[0], { timbre: 'bass', at: t, duration: (d.gap ?? 1.1) * 0.95, gain: 0.3 });
-        playChord(c.map((o) => base + o), { timbre: d.timbre ?? 'pad', at: t, duration: (d.gap ?? 1.1) * 0.95, gain: 0.8 });
-        t += d.gap ?? 1.1;
+        playNote(base - 24 + c[0], { timbre: 'bass', at: t, duration: gap - 0.35, gain: 0.22 });
+        playChord(c.map((o) => base + o), { timbre: d.timbre ?? 'chord', at: t, duration: gap - 0.35, gain: 0.8 });
+        t += gap;
       }
     }
   }
@@ -633,8 +678,9 @@ export class World {
     if (this.disposed) return;
     const question = makeQuestion(spec, Math.random, progress.misses);
     this.drilling = d === null;
+    this.resing = !!d?.solved;
     const runner = new PuzzleRunner(question, {
-      playPrompt: (step, slow) => playPrompt(runner, step, slow, (s) => this.panel.setStatus(s)),
+      playPrompt: (step, slow, again) => playPrompt(runner, step, slow, again, (s) => this.panel.setStatus(s)),
       onListening: () => this.panel.setStatus(listeningStatus(runner)),
       onStepSolved: (i) => this.onStepSolved(d, i),
       onSolved: () => (d ? this.onSolved(d) : this.onDrillSolved()),
@@ -670,21 +716,22 @@ export class World {
       this.panel.setStatus(`Yes: ${step.label.toLowerCase()}. A note of voice back.`);
     } else this.panel.setStatus(`Yes: ${step.label.toLowerCase()}.`);
     if (d?.def.puzzle.id === 'stage-song') playSongLayers(index, step);
-    else if (step.mode === 'melody') playNote(step.targetMidi, { timbre: 'pad', duration: 0.6, gain: 0.5 });
-    else if (step.spec.kind === 'chordName') playChord(CHORD_TONES[step.spec.quality].map((o) => step.refMidi + o), { timbre: 'bell', duration: 0.6, gain: 0.7 });
+    else if (step.mode === 'melody') {
+      /* No echo mid-tune: a single note played back sounded like a new prompt. The status line confirms. */
+    } else if (step.spec.kind === 'chordName') playChord(CHORD_TONES[step.spec.quality].map((o) => step.refMidi + o), { timbre: 'bell', duration: 0.6, gain: 0.7 });
     else if (step.spec.kind === 'chordTone') {
-      playChord(CHORD_TONES[step.spec.quality].map((o) => step.refMidi + o), { timbre: 'pad', duration: 0.8, gain: 0.6 });
+      playChord(CHORD_TONES[step.spec.quality].map((o) => step.refMidi + o), { timbre: 'chord', duration: 0.8, gain: 0.6 });
       playNote(step.targetMidi, { timbre: 'bell', duration: 0.6, gain: 0.5 });
     } else if (step.spec.kind === 'resolve') {
       const t0 = engine.now + 0.05;
-      playNote(step.refMidi - 12, { timbre: 'bass', at: t0, duration: 1.4, gain: 0.4 });
-      playChord(CHORD_TONES.maj7.map((o) => step.refMidi + o), { timbre: 'pad', at: t0, duration: 1.4, gain: 0.8 });
+      playNote(step.refMidi - 24, { timbre: 'bass', at: t0, duration: 1.4, gain: 0.25 });
+      playChord(CHORD_TONES.maj7.map((o) => step.refMidi + o), { timbre: 'chord', at: t0, duration: 1.4, gain: 0.8 });
       playNote(step.refMidi + 12, { timbre: 'bell', at: t0, duration: 1.0, gain: 0.45 });
     } else if (step.spec.kind === 'degree') playNote(step.targetMidi, { timbre: 'bell', duration: 0.5, gain: 0.5 });
     else playSequence([step.refMidi, step.targetMidi], { timbre: 'bell', duration: 0.35, gap: 0.18, gain: 0.5 });
     // A multi-tile door (the serpent) sinks one segment per step.
     if (d && d.def.tiles.length > 1 && index < d.tiles.length) for (const m of d.tiles[index]) this.slide(m, m.position.add(new Vector3(0, -0.3, 0)), 400);
-    return this.wait(step.mode === 'melody' ? 350 : step.spec.kind === 'resolve' ? 1500 : 900);
+    return this.wait(step.mode === 'melody' ? 250 : step.spec.kind === 'resolve' ? 1500 : 900);
   }
 
   /** The whole song with every layer, then the kingdom's colour and the results. */
@@ -715,7 +762,7 @@ export class World {
     const engine = AudioEngine.get();
     engine.setDuck(1);
     const r = this.runner!;
-    if (!this.drilling) {
+    if (!this.drilling && !this.resing) {
       progress.areaMisses[this.area.id] = (progress.areaMisses[this.area.id] ?? 0) + 1;
       this.setVoice(progress.voice - 1, progress.voice - 1);
       if (progress.voice <= 0) {
@@ -749,12 +796,24 @@ export class World {
     const q = this.runner!.question;
     doorOpen(q.steps[0].refMidi);
     this.endPuzzle(true);
+    if (this.practice && !progress.drilled.includes(this.practice.lesson)) {
+      progress.drilled.push(this.practice.lesson);
+      this.ringAt(this.practice.tile, true);
+    }
     const v = progress.voice;
     this.toast(v >= VOICE_DRILL_CAP ? `Practice done. Voice ${v} of ${VOICE_MAX}. Doors give the rest. Space: practise again.` : `Practice done. Voice ${v} of ${VOICE_MAX}. Space: practise again.`, 5000);
     saveProgress(progress);
   }
 
   private onSolved(d: DoorView): void {
+    const q = this.runner!.question;
+    if (this.resing) {
+      doorOpen(q.steps[0].refMidi);
+      this.later(500, () => playSequence(q.steps.map((s) => s.targetMidi).concat([q.steps[0].targetMidi + 12]), { timbre: 'bell', duration: 0.3, gap: 0.14, gain: 0.45 }));
+      this.endPuzzle(true);
+      this.toast('Sung again, note for note.');
+      return;
+    }
     d.solved = true;
     this.setVoice(VOICE_MAX);
     if (!progress.solved.includes(d.def.puzzle.id)) progress.solved.push(d.def.puzzle.id);
@@ -767,7 +826,7 @@ export class World {
       return;
     }
     this.bloomAt(t0.x, t0.y, this.areaComplete() ? 1e9 : 14);
-    const q = this.runner!.question;
+    this.later(700, () => d.ring && this.setRing(d.ring, true));
     doorOpen(q.steps[0].refMidi);
     this.later(700, () => playSequence(q.steps.map((s) => s.targetMidi).concat([q.steps[0].targetMidi + 12]), { timbre: 'bell', duration: 0.3, gap: 0.14, gain: 0.45 }));
     this.endPuzzle(true);
@@ -779,6 +838,7 @@ export class World {
     this.runner?.abort();
     this.runner = null;
     this.drilling = false;
+    this.resing = false;
     this.panel.hide();
     AudioEngine.get().setDuck(1);
     this.later(solved ? 1800 : 300, () => {
@@ -907,8 +967,8 @@ export class World {
       const d = this.nearestDoor();
       if (d) {
         const t = d.def.tiles[0];
-        this.placeBubble(t.x + 0.5, 1.7, t.y + 0.5);
-        this.hud.setHint('Space: listen to the door');
+        this.placeBubble(t.x + 0.5, d.solved ? 1.0 : 1.7, t.y + 0.5);
+        this.hud.setHint(d.solved ? 'Space: sing this door again' : 'Space: listen to the door');
       } else if (this.practice && this.nearPractice()) {
         const t = this.practice.tile;
         this.placeBubble(t.x + 0.5, 1.2, t.y + 0.5);
@@ -933,6 +993,7 @@ export class World {
       this.fragment.rotation.y += dt * 1.4;
     }
     if (this.water) this.water.time = timeMs / 1000;
+    if (this.glow) this.glow.emissiveColor = this.glowBase.scale(0.55 + 0.45 * Math.sin(timeMs / 420));
     this.updateColour(dt * 1000, timeMs);
     MusicPlayer.get().setLife(this.areaLife());
     this.placeCamera(Math.min(1, dt * 6));

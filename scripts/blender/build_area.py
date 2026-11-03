@@ -688,10 +688,13 @@ class Area:
     # ----- doors, gates, bench
 
     def door_axis(self, x, y):
-        """'x' when the door faces north/south (walls to its left and right), else 'y'."""
-        if self.is_wall(x - 1, y) or self.is_wall(x + 1, y):
+        """'x' when the door faces north/south (something impassable to its left and right), else 'y'.
+        Water and trees count as well as walls: the Bridge of Echoes door stands between river tiles
+        and the valley's tree doors between rows of trees."""
+        blocked = (WALL, WATER, TREE)
+        if self.at(x - 1, y) in blocked or self.at(x + 1, y) in blocked:
             return 'x'
-        if self.is_wall(x, y - 1) or self.is_wall(x, y + 1):
+        if self.at(x, y - 1) in blocked or self.at(x, y + 1) in blocked:
             return 'y'
         return 'x'
 
@@ -705,6 +708,9 @@ class Area:
         trunk = material('trunk', shade(p['bridge'], 0.6))
         serpent_m = material('serpent', shade(p['tree'], 0.9), rough=0.5)
         serpent_eye = material('serpent-eye', p['accent'], emission=p['accent'])
+        # The glowing edge every closed door shares. The game keeps this material in colour whatever the
+        # tile's life and pulses its emission, so a door reads as a door from across a grey area.
+        glow = material('door-glow', p['accent'], emission=p['accent'], rough=0.4)
         for e in self.entities:
             if e['kind'] != 'door':
                 continue
@@ -713,9 +719,30 @@ class Area:
                 cx, cy, _ = tile_pos(x, y)
                 b = Builder(name)
                 if e['texture'] == 'tile-tree':
-                    self.tree(b, x, y, canopy, trunk, k=1.15)
-                    b.sphere((0, 0, 0), 0.001, canopy)  # keep origin at the tile centre
-                    obj = b.build(location=(0, 0, 0))
+                    # A gate of woven branches between two trunks, across the gap in the tree rows.
+                    axis = self.door_axis(x, y)
+                    hgt = 1.5
+                    for s in (-1, 1):
+                        px, py = (cx + s * 0.44, cy) if axis == 'x' else (cx, cy + s * 0.44)
+                        props.cylinder((px, py, hgt / 2), 0.1, hgt, trunk, segments=8, radius2=0.07)
+                        props.sphere((px, py, hgt + 0.15), 0.3, canopy, scale=(1, 1, 0.8), subdiv=1)
+                    for k in range(5):
+                        o = -0.32 + k * 0.16
+                        lean = (hash2(x, y, 60 + k) - 0.5) * 0.08
+                        if axis == 'x':
+                            b.cylinder((cx + o + lean, cy, (hgt - 0.2) / 2), 0.035, hgt - 0.2, trunk, segments=6)
+                        else:
+                            b.cylinder((cx, cy + o + lean, (hgt - 0.2) / 2), 0.035, hgt - 0.2, trunk, segments=6)
+                    for z in (0.3, 0.7, 1.1):
+                        if axis == 'x':
+                            b.box((cx, cy, z), (0.86, 0.12, 0.1), glow, bevel=0.02)
+                        else:
+                            b.box((cx, cy, z), (0.12, 0.86, 0.1), glow, bevel=0.02)
+                    if axis == 'x':
+                        b.box((cx, cy, hgt - 0.1), (0.9, 0.14, 0.12), glow, bevel=0.02)
+                    else:
+                        b.box((cx, cy, hgt - 0.1), (0.14, 0.9, 0.12), glow, bevel=0.02)
+                    obj = b.build()
                 elif e['texture'] == 'serpent':
                     r = 0.38
                     b.sphere((cx, cy, r), r, serpent_m, scale=(1.05, 1.0, 0.8), subdiv=2)
@@ -742,6 +769,16 @@ class Area:
                         props.box((cx, cy, hgt + 0.08), (0.3, 1.0, 0.18), frame, bevel=0.04)
                         b.box((cx, cy, (hgt - 0.1) / 2), (0.1, 0.74, hgt - 0.1), door_m, bevel=0.03)
                         b.sphere((cx - 0.07, cy + 0.22, 0.62), 0.05, knob, subdiv=1)
+                    # The glowing edge: a thin strip up both sides and across the top, proud of both faces.
+                    for s in (-1, 1):
+                        if axis == 'x':
+                            b.box((cx + s * 0.33, cy, (hgt - 0.1) / 2), (0.09, 0.2, hgt - 0.1), glow, bevel=0.01)
+                        else:
+                            b.box((cx, cy + s * 0.33, (hgt - 0.1) / 2), (0.2, 0.09, hgt - 0.1), glow, bevel=0.01)
+                    if axis == 'x':
+                        b.box((cx, cy, hgt - 0.14), (0.74, 0.2, 0.09), glow, bevel=0.01)
+                    else:
+                        b.box((cx, cy, hgt - 0.14), (0.2, 0.74, 0.09), glow, bevel=0.01)
                     obj = b.build()
                 if obj:
                     objs.append(obj)
@@ -935,7 +972,7 @@ class Area:
             # Standing stones flank the gates and the grove.
             stone = material('pillar', shade(p['wall'], 0.85))
             for e in doors:
-                if 'serpent' in e['id'] or 'octave' in e['id']:
+                if 'serpent' in e['id'] or 'octave' in e['id'] or e['texture'] == 'tile-tree':
                     continue
                 x, y = e['tiles'][0]
                 cx, cy, _ = tile_pos(x, y)

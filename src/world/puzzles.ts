@@ -134,7 +134,7 @@ export function makeQuestion(spec: PuzzleSpec, rng: Rng = Math.random, weights: 
       case 'chordTone': {
         const tones = CHORD_TONES[s.quality];
         const offset = s.tone === 3 ? tones[1] : s.tone === 5 ? tones[2] : tones[3];
-        step = { ...base, targetMidi: refMidi + offset, label: `${CHORD_NAMES[s.quality]}, the ${s.tone === 3 ? 'third' : s.tone === 5 ? 'fifth' : 'seventh'}` };
+        step = { ...base, targetMidi: refMidi + offset, label: `the ${s.tone === 3 ? 'third' : s.tone === 5 ? 'fifth' : 'seventh'} of a ${CHORD_NAMES[s.quality].toLowerCase()}` };
         break;
       }
       case 'chordName':
