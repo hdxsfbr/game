@@ -75,11 +75,11 @@ railway up --service game --detach
   and the Blender-built scenery), puzzle model and runner, lessons, palettes.
 - `src/scenes3d/`: the Babylon.js app, the world (loading, camera, sun and shadows, doors, gates,
   bench, fragment, exits, the puzzle flow), the player and rig, the grid collision, the colour
-  plugins (grey-to-colour life map, water, sky) and the sky dome. Rendering: shadow map, SSAO2
-  ambient occlusion at half resolution (geometry buffer, 8 samples), then bloom and FXAA. The
-  occlusion costs about a third of a frame on a CPU renderer and is lost in the noise on a discrete
-  GPU; on a machine that cannot hold 40 fps over the first seconds it switches itself off for the
-  session. `?ao=on` and `?ao=off` on the URL force it either way. The one world material without the
+  plugins (grey-to-colour life map, water, sky) and the sky dome. Rendering: shadow map (PCF, a
+  tight sun frustum), then bloom on the glowing things only, then FXAA. SSAO2 ambient occlusion is
+  built in but off by default: at half resolution it drew fuzzy dark bands along wall bases and a halo
+  round the character. `?ao=on` turns it on for a session, and a machine that cannot hold 40 fps over
+  the first seconds switches it off again. The one world material without the
   grey-to-colour plugin is `door-glow`, the strip on every closed door, which the world pulses so a door
   reads from across a grey area.
 - `src/overlay/`: the HTML overlays: title, HUD, puzzle panel with piano and ladder, map, lessons,

@@ -274,10 +274,11 @@ export class World {
       }
     }
     // Ambient occlusion: a soft contact shadow where walls meet the ground and props meet the walls.
-    // It runs before bloom and FXAA. ?ao=off skips it, ?ao=on keeps it whatever the frame rate; otherwise
-    // the first seconds of play decide (see checkAo).
+    // Off unless ?ao=on asks for it: at half resolution it painted dark fuzzy bands along wall bases and a
+    // halo round the character (Andre, 2026-11-03), which read as broken shadows, not as depth.
+    // With ?ao=on it runs before bloom and FXAA and the first seconds of play may still switch it off (see checkAo).
     const aoParam = new URLSearchParams(location.search).get('ao');
-    const aoOff = aoParam === 'off' || (aoParam !== 'on' && sessionStorage.getItem(AO_KEY) === 'off');
+    const aoOff = aoParam !== 'on' || sessionStorage.getItem(AO_KEY) === 'off';
     if (!aoOff && SSAO2RenderingPipeline.IsSupported) {
       this.ssao = new SSAO2RenderingPipeline('ssao', scene, { ssaoRatio: 0.5, blurRatio: 0.5 }, [this.camera], true);
       this.ssao.radius = 1.1;
@@ -289,7 +290,7 @@ export class World {
       this.ssao.expensiveBlur = true;
       this.ssao.bilateralSamples = 8;
       this.ssao.bilateralSoften = 0.2;
-      if (aoParam !== 'on') this.aoCheck = { startAt: performance.now() + 2500, frames: 0, ms: 0 };
+      this.aoCheck = { startAt: performance.now() + 2500, frames: 0, ms: 0 };
     }
     this.pipeline = new DefaultRenderingPipeline('pipe', false, scene, [this.camera]);
     this.pipeline.imageProcessingEnabled = false;
@@ -323,7 +324,7 @@ export class World {
     this.lessonView.setPalette(this.palette);
     this.lessonView.onHear = (page) => this.playDemo(page);
     this.lessonView.onDrill = () => this.startDrill();
-    this.lessonView.onLeave = () => this.lessonView.hide();
+    this.lessonView.onLeave = () => this.closeLesson();
     this.hud.show(this.area.name);
     if (!progress.cardsSeen.includes(this.area.id)) {
       const ok = await this.storyCard.show(this.area.id, this.area.name);
@@ -565,8 +566,16 @@ export class World {
     if (!lesson) return;
     void AudioEngine.get().unlock();
     panelOpen();
+    // The music steps aside at the bench as it does at a door, so the examples are heard alone.
+    MusicPlayer.get().setPaused(true);
     this.lessonView.show(lesson);
     this.hud.setHint('');
+  }
+
+  /** Leave the lesson pages without a drill: the music comes back. */
+  private closeLesson(): void {
+    this.lessonView.hide();
+    if (!this.runner) MusicPlayer.get().setPaused(false);
   }
 
   private playDemo(page: LessonPage): void {
@@ -634,7 +643,7 @@ export class World {
       return;
     }
     if (this.lessonView.visible) {
-      if (ev.code === 'Escape') this.lessonView.hide();
+      if (ev.code === 'Escape') this.closeLesson();
       else if (ev.code === 'Space') this.lessonView.hear();
       else if (ev.code === 'ArrowRight' || ev.code === 'KeyD') this.lessonView.go(1);
       else if (ev.code === 'ArrowLeft' || ev.code === 'KeyA') this.lessonView.go(-1);
