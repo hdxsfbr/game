@@ -13,14 +13,15 @@ export type Facing = 'north' | 'south' | 'east' | 'west';
 
 const TRIPO_SCALE = 1.3;
 const TRIPO_FACE = Math.PI;
-/**
- * The walk clip takes steps of about 0.44 tiles twice a second, so at 1x it covers 0.9 tiles a second.
- * Played at this rate the feet keep up with WALK_SPEED (World.ts) well enough that they no longer skate.
- */
+/** Fallback rate for the walk clip when its stride cannot be measured (about 0.44 tiles a step, twice a second). */
 const WALK_RATE = 2.3;
-const STEPS_PER_SECOND = 2 * WALK_RATE;
+/** How fast the player moves, in tiles a second: the clip rate is chosen so the feet keep up. World.ts sets it. */
+export let MOVE_SPEED = 3.8;
+export function setMoveSpeed(v: number): void {
+  MOVE_SPEED = v;
+}
 /** The Tripo export's clips, matched by prefix. */
-const CLIPS = { walk: 'walk forward', idle: 'standing idle', sing: 'standing in place and singing' } as const;
+const CLIPS = { walk: 'walk forward', run: 'run', idle: 'standing idle', sing: 'standing in place and singing' } as const;
 type Clip = keyof typeof CLIPS;
 
 /**
@@ -41,6 +42,9 @@ export class Player {
   /** Animation clips when the character has them; the rig drives the joints otherwise. */
   private clips: Partial<Record<Clip, AnimationGroup>> = {};
   private clip: Clip = 'idle';
+  /** The clip used for moving (run when the character has one), and its footfalls a second at the chosen rate. */
+  private moveClip: Clip = 'walk';
+  private stepsPerSecond = 2 * WALK_RATE;
   private singing = false;
   /** Yaw to add so the model's front faces -Z like the mannequin. */
   private faceOffset = 0;
@@ -80,8 +84,13 @@ export class Player {
       }
       if (p.clips.walk && p.clips.idle) {
         // Every clip loops all the time; only their weights change, so switching is a crossfade.
+        p.moveClip = p.clips.run ? 'run' : 'walk';
+        const move = p.clips[p.moveClip]!;
+        const rate = p.matchStride(scene, move);
         for (const g of Object.values(p.clips)) {
-          g.start(true, g === p.clips.walk ? WALK_RATE : 1.0);
+          g.start(true, 1.0);
+          // Set after start: measuring the stride has already started the clip, and start() is then a no-op.
+          g.speedRatio = g === move ? rate : 1.0;
           g.setWeightForAllAnimatables(0);
         }
         p.clips.idle.setWeightForAllAnimatables(1);
@@ -100,6 +109,41 @@ export class Player {
       }
     }
     return p;
+  }
+
+  /**
+   * Play the moving clip at the rate that makes its feet cover MOVE_SPEED. The clip is sampled once: the
+   * step length is the widest the feet get apart, the cadence is how often they do, and ground speed at
+   * 1x is their product. Returns the rate, and remembers the footfall cadence for the footstep sounds.
+   */
+  private matchStride(scene: Scene, clip: AnimationGroup): number {
+    const lf = scene.getTransformNodeByName('mixamorig:LeftFoot');
+    const rf = scene.getTransformNodeByName('mixamorig:RightFoot');
+    const anim = clip.targetedAnimations[0]?.animation;
+    if (!lf || !rf || !anim) return WALK_RATE;
+    const fps = anim.framePerSecond || 30;
+    const seconds = (clip.to - clip.from) / fps;
+    if (seconds <= 0) return WALK_RATE;
+    for (const g of Object.values(this.clips)) g.setWeightForAllAnimatables(g === clip ? 1 : 0);
+    const seps: number[] = [];
+    for (let f = clip.from; f <= clip.to; f += 2) {
+      clip.goToFrame(f);
+      scene.render();
+      const a = lf.getAbsolutePosition();
+      const b = rf.getAbsolutePosition();
+      seps.push(Math.hypot(a.x - b.x, a.z - b.z));
+    }
+    const max = Math.max(...seps);
+    let peaks = 0;
+    for (let i = 1; i < seps.length - 1; i++) if (seps[i] > max * 0.6 && seps[i] >= seps[i - 1] && seps[i] > seps[i + 1]) peaks++;
+    const cadence = peaks / seconds; // steps a second at 1x
+    const ground = max * cadence; // tiles a second at 1x
+    if (!(ground > 0.05)) return WALK_RATE;
+    // Runs read fine up to about 4 steps a second; a walk is not pushed past a brisk pace.
+    const cap = this.moveClip === 'run' ? 4 / cadence : 2.4;
+    const rate = Math.max(0.6, Math.min(cap, MOVE_SPEED / ground));
+    this.stepsPerSecond = cadence * rate;
+    return rate;
   }
 
   setPosition(x: number, z: number): void {
@@ -140,7 +184,7 @@ export class Player {
     const L = this.limbs;
     let footfall = false;
     if (this.clips.walk && this.clips.idle) {
-      const want: Clip = this.moving ? 'walk' : this.singing && this.clips.sing ? 'sing' : 'idle';
+      const want: Clip = this.moving ? this.moveClip : this.singing && this.clips.sing ? 'sing' : 'idle';
       if (want !== this.clip) this.clip = want;
       const k = Math.min(1, dt * 7);
       for (const key of Object.keys(this.clips) as Clip[]) {
@@ -151,7 +195,7 @@ export class Player {
       }
       if (this.moving) {
         const before = Math.floor(this.phase / Math.PI);
-        this.phase += dt * STEPS_PER_SECOND * Math.PI;
+        this.phase += dt * this.stepsPerSecond * Math.PI;
         footfall = Math.floor(this.phase / Math.PI) !== before;
       } else this.phase = 0;
       return footfall;

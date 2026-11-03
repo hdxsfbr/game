@@ -14,6 +14,8 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { CreatePolyhedron } from '@babylonjs/core/Meshes/Builders/polyhedronBuilder';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { AssetContainer } from '@babylonjs/core/assetContainer';
+import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup';
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import '@babylonjs/loaders/glTF';
 import { AudioEngine } from '../audio/engine';
 import { MusicPlayer } from '../audio/music';
@@ -29,7 +31,7 @@ import type { StoryCard } from '../overlay/StoryCard';
 import { mic } from '../overlay/Title';
 import { el } from '../overlay/dom';
 import { VOICE_AFTER_QUIET, VOICE_DRILL_CAP, VOICE_MAX, progress, saveProgress } from '../state';
-import { AREAS, type AreaDef, type DoorDef, type GateDef, type PracticeDef } from '../world/areas';
+import { AREAS, type AreaDef, type DoorDef, type GateDef, type NpcDef, type PracticeDef } from '../world/areas';
 import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
@@ -37,6 +39,7 @@ import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQual
 import { LifeMap, LifePlugin, WaterPlugin } from './colour';
 import { burst } from './fx';
 import { Grid } from './grid';
+import { setMoveSpeed } from './Player';
 import { SkyDome } from './sky';
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline';
 import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline';
@@ -54,6 +57,7 @@ const CAM_LOOK = new Vector3(0, 0.7, -1.2);
 // Tiles per second. The 2D game walked at 4.7; the singer's walk clip covers about 0.9 a second, so the
 // feet slid. 3.8 with the clip at 2.3x (Player.ts) keeps the slide small without turning the walk into a run.
 const WALK_SPEED = 3.8;
+setMoveSpeed(WALK_SPEED);
 
 export interface WorldStart {
   area?: string;
@@ -152,6 +156,10 @@ export class World {
   private resing = false;
   /** A door the camera pushes in on for a moment, and until when. */
   private focus: { x: number; z: number; until: number } | null = null;
+  /** People standing about, with the clip they play while their door is sung. */
+  private npcs: Array<{ def: NpcDef; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean }> = [];
+  /** The door whose puzzle is running, for the people who react to it. */
+  private activeDoor: string | null = null;
   /** The singer keeps singing until this time (after a door opens, during the finale). */
   private celebrateUntil = 0;
   /** The finale walks the singer to centre stage. */
@@ -308,6 +316,8 @@ export class World {
     this.buildEntities();
 
     this.player = await Player.load(scene, new Map());
+    if (this.disposed) return;
+    await this.loadExtras();
     if (this.disposed) return;
     for (const m of this.player.meshes) this.shadows.addShadowCaster(m, false);
     const at = start.at ?? (progress.area === this.area.id && progress.x > 0 ? { x: progress.x, y: progress.y } : this.area.start);
@@ -682,6 +692,7 @@ export class World {
     const question = makeQuestion(spec, Math.random, progress.misses);
     this.drilling = d === null;
     this.resing = !!d?.solved;
+    this.activeDoor = d?.def.puzzle.id ?? null;
     const runner = new PuzzleRunner(question, {
       playPrompt: (step, slow, again) => playPrompt(runner, step, slow, again, (s) => this.panel.setStatus(s)),
       onListening: () => this.panel.setStatus(listeningStatus(runner)),
@@ -878,6 +889,93 @@ export class World {
     saveProgress(progress);
   }
 
+  /**
+   * People and hero props whose files have arrived: public/character/index.json and public/props/index.json
+   * list the models present (scripts/assets-index.mjs writes them), so nothing is fetched that is not there.
+   */
+  private async loadExtras(): Promise<void> {
+    const list = async (url: string): Promise<Set<string>> => {
+      try {
+        const r = await fetch(url);
+        return new Set(r.ok ? ((await r.json()) as string[]) : []);
+      } catch {
+        return new Set();
+      }
+    };
+    const [people, props] = await Promise.all([list('character/index.json'), list('props/index.json')]);
+    if (this.disposed) return;
+    const place = (top: TransformNode, tile: { x: number; y: number }, scale: number, yaw: number) => {
+      top.position.set(tile.x + 0.5, 0, tile.y + 0.5);
+      top.scaling.setAll(scale);
+      top.rotationQuaternion = null;
+      top.rotation.y = yaw;
+    };
+    const world = (c: AssetContainer) => {
+      // World materials, so they grey out and come back with the area.
+      const fresh = new Set<Material>();
+      for (const m of c.meshes) {
+        const before = this.matCache.get(m.material!);
+        toStandard(m, this.scene, this.matCache);
+        if (!before && m.material) fresh.add(m.material);
+        m.isPickable = false;
+        m.receiveShadows = true;
+        if (m.getTotalVertices() > 0) this.shadows.addShadowCaster(m, false);
+      }
+      for (const mat of fresh) if (this.lifeMap) new LifePlugin(mat, this.lifeMap);
+    };
+    const YAW: Record<string, number> = { south: 0, west: Math.PI / 2, north: Math.PI, east: -Math.PI / 2 };
+    for (const e of this.area.entities) {
+      if (e.kind === 'npc' && people.has(e.model)) {
+        try {
+          const c = await LoadAssetContainerAsync(`character/${e.model}.glb`, this.scene);
+          if (this.disposed) return c.dispose();
+          c.addAllToScene();
+          world(c);
+          const top = c.rootNodes[0] as TransformNode;
+          // Tripo characters face +Z; the singer's offset of a half turn applies to them too.
+          place(top, e.tile, e.scale ?? 1.3, YAW[e.face ?? 'south'] + Math.PI);
+          this.grid.setBlocked(e.tile.x, e.tile.y, true);
+          const idle = c.animationGroups.find((g) => /idle/i.test(g.name)) ?? c.animationGroups[0] ?? null;
+          const action = c.animationGroups.find((g) => g !== idle) ?? null;
+          for (const g of c.animationGroups) {
+            g.start(true, 1.0);
+            g.setWeightForAllAnimatables(g === idle ? 1 : 0);
+          }
+          this.npcs.push({ def: e, idle, action, acting: false });
+        } catch (err) {
+          console.warn(`character ${e.model} did not load`, err);
+        }
+      } else if (e.kind === 'prop' && props.has(e.model)) {
+        try {
+          const c = await LoadAssetContainerAsync(`props/${e.model}.glb`, this.scene);
+          if (this.disposed) return c.dispose();
+          c.addAllToScene();
+          world(c);
+          place(c.rootNodes[0] as TransformNode, e.tile, e.scale ?? 1, ((e.turn ?? 0) * Math.PI) / 2);
+          if (!e.walkable) this.grid.setBlocked(e.tile.x, e.tile.y, true);
+        } catch (err) {
+          console.warn(`prop ${e.model} did not load`, err);
+        }
+      }
+    }
+  }
+
+  /** Crossfade each person between idle and their action as their door starts and stops being sung. */
+  private updateNpcs(dt: number): void {
+    const k = Math.min(1, dt * 5);
+    for (const n of this.npcs) {
+      const want = !!n.action && !!n.def.door && (n.def.door === this.activeDoor || (progress.finished && n.def.door === 'stage-song'));
+      if (want === n.acting && !n.action) continue;
+      n.acting = want;
+      const w = n.action?.animatables[0]?.weight ?? 0;
+      const target = want ? 1 : 0;
+      if (n.action && Math.abs(target - w) > 0.001) {
+        n.action.setWeightForAllAnimatables(w + (target - w) * k);
+        n.idle?.setWeightForAllAnimatables(1 - (w + (target - w) * k));
+      }
+    }
+  }
+
   /** The moment a door opens: a shower of sparks from the frame, the camera leans in, the singer holds the note, the music swells. */
   private doorMoment(d: DoorView): void {
     const accent = this.palette.accent;
@@ -897,6 +995,9 @@ export class World {
     this.drilling = false;
     this.resing = false;
     this.panel.hide();
+    this.later(solved ? 2500 : 0, () => {
+      if (!this.runner) this.activeDoor = null;
+    });
     AudioEngine.get().setDuck(1);
     this.later(solved ? 1800 : 300, () => {
       if (!this.runner) MusicPlayer.get().setPaused(false);
@@ -1072,6 +1173,7 @@ export class World {
     }
     if (this.water) this.water.time = timeMs / 1000;
     if (this.glow) this.glow.emissiveColor = this.glowBase.scale(0.55 + 0.45 * Math.sin(timeMs / 420));
+    this.updateNpcs(dt);
     this.updateColour(dt * 1000, timeMs);
     MusicPlayer.get().setLife(this.areaLife());
     this.placeCamera(Math.min(1, dt * 6));

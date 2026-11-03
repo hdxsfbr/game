@@ -33,8 +33,8 @@ describe.each(Object.values(AREAS))('area $id', (area) => {
 
   it('places every door, gate and exit on a matching tile', () => {
     for (const e of area.entities) {
-      if (e.kind === 'fragment' || e.kind === 'practice') {
-        expect(area.map[e.tile.y][e.tile.x]).toBe('.');
+      if (e.kind === 'fragment' || e.kind === 'practice' || e.kind === 'npc' || e.kind === 'prop') {
+        expect(area.map[e.tile.y][e.tile.x], `${e.kind} at ${e.tile.x},${e.tile.y}`).toBe('.');
         if (e.kind === 'practice') expect(area.map[e.at.y][e.at.x]).toBe('.');
         continue;
       }
@@ -45,7 +45,7 @@ describe.each(Object.values(AREAS))('area $id', (area) => {
 
   it('every D, G and X tile belongs to an entity', () => {
     const owned = new Set<string>();
-    for (const e of area.entities) if (e.kind !== 'fragment' && e.kind !== 'practice') for (const t of e.tiles) owned.add(`${t.x},${t.y}`);
+    for (const e of area.entities) if (e.kind !== 'fragment' && e.kind !== 'practice' && e.kind !== 'npc' && e.kind !== 'prop') for (const t of e.tiles) owned.add(`${t.x},${t.y}`);
     area.map.forEach((row, y) => {
       [...row].forEach((c, x) => {
         if (c === 'D' || c === 'G' || c === 'X') expect(owned.has(`${x},${y}`), `${c} at ${x},${y}`).toBe(true);
@@ -56,7 +56,7 @@ describe.each(Object.values(AREAS))('area $id', (area) => {
   it('reaches every entity from the start when doors are open', () => {
     const seen = reachable(area.map, area.start);
     for (const e of area.entities) {
-      const tiles = e.kind === 'fragment' || e.kind === 'practice' ? [e.tile] : e.tiles;
+      const tiles = e.kind === 'fragment' || e.kind === 'practice' || e.kind === 'npc' || e.kind === 'prop' ? [e.tile] : e.tiles;
       for (const t of tiles) {
         const neighbours = [t, { x: t.x + 1, y: t.y }, { x: t.x - 1, y: t.y }, { x: t.x, y: t.y + 1 }, { x: t.x, y: t.y - 1 }];
         expect(neighbours.some((n) => seen.has(`${n.x},${n.y}`)), `${e.kind} at ${t.x},${t.y}`).toBe(true);

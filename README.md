@@ -56,6 +56,8 @@ from another machine. The mic starts on a click.
   `python3 scripts/doors.py` lists every door and gate with the facing the generator gives it (no
   Blender needed) and `scripts/doorshots.sh [outDir] [url]` screenshots each one from the passage side.
   `node scripts/bootshot.mjs [url]` checks the page's own loader (index.html) on a throttled connection.
+  `node scripts/assets-index.mjs` lists the Tripo characters and props present so the game loads them
+  (`docs/tripo-brief.md` is the job list with prompts and file names).
 - `scripts/blender/build.sh [area ...]`: rebuilds the world glbs (`build_area.py`) and the
   placeholder mannequin (`build_mannequin.py`) with headless Blender; `build_sky.py` renders the
   skies. Blender 4.x is expected at `~/.local/opt/blender/blender` (or `$BLENDER`).

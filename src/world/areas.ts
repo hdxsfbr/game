@@ -46,7 +46,37 @@ export interface PracticeDef {
   lesson: string;
 }
 
-export type EntityDef = DoorDef | GateDef | ExitDef | PickupDef | PracticeDef;
+/**
+ * A character standing in the world: a rigged Tripo model in public/character/<model>.glb with an idle
+ * clip and, usually, one action clip. Loaded only when public/character/index.json lists the model, so
+ * an area can name its people before their files exist. The action clip plays while `door` is being sung.
+ */
+export interface NpcDef {
+  kind: 'npc';
+  tile: { x: number; y: number };
+  model: string;
+  /** Which way they face. Default south, toward the camera. */
+  face?: 'north' | 'south' | 'east' | 'west';
+  /** The door whose puzzle makes them act (sing, play, nod). */
+  door?: string;
+  /** Height in tiles. Default 1.3, the singer's. */
+  scale?: number;
+}
+
+/** A hero prop from public/props/<model>.glb, loaded when public/props/index.json lists it. */
+export interface PropDef {
+  kind: 'prop';
+  tile: { x: number; y: number };
+  model: string;
+  /** Turn, in quarter turns clockwise seen from above. Default 0. */
+  turn?: number;
+  /** Uniform scale. Default 1. */
+  scale?: number;
+  /** Whether the player can walk through its tile. Default blocked. */
+  walkable?: boolean;
+}
+
+export type EntityDef = DoorDef | GateDef | ExitDef | PickupDef | PracticeDef | NpcDef | PropDef;
 
 export interface AreaDef {
   id: string;
@@ -101,6 +131,7 @@ export const HUB: AreaDef = {
       },
     },
     { kind: 'practice', tile: { x: 18, y: 10 }, at: { x: 18, y: 11 }, lesson: 'hub' },
+    { kind: 'npc', tile: { x: 8, y: 7 }, model: 'hearthkeeper', face: 'east', door: 'hub-unison' },
     { kind: 'exit', tiles: [{ x: 0, y: 8 }], to: 'valley', at: { x: 57, y: 16 } },
     { kind: 'gate', tiles: [{ x: 14, y: 1 }], flag: 'valley-complete', lockedLine: 'The stairs to the town are too steep for a voice this small. Come back when it has grown.' },
     { kind: 'exit', tiles: [{ x: 14, y: 0 }], to: 'town', at: { x: 22, y: 33 } },
@@ -236,6 +267,7 @@ export const VALLEY: AreaDef = {
         sharedRef: true,
       },
     },
+    { kind: 'npc', tile: { x: 9, y: 18 }, model: 'shepherd', face: 'west', door: 'valley-serpent' },
     { kind: 'fragment', tile: { x: 7, y: 25 }, id: 'fragment-valley' },
     { kind: 'exit', tiles: [{ x: 7, y: 27 }], to: 'hub', at: { x: 14, y: 8 } },
   ],
@@ -393,6 +425,12 @@ export const TOWN: AreaDef = {
         sharedRef: true,
       },
     },
+    { kind: 'npc', tile: { x: 20, y: 29 }, model: 'stallkeeper', face: 'east', door: 'town-bell' },
+    { kind: 'npc', tile: { x: 24, y: 24 }, model: 'stallkeeper-2', face: 'west', door: 'town-stall-mi' },
+    { kind: 'npc', tile: { x: 20, y: 5 }, model: 'mayor', face: 'east', door: 'town-choir' },
+    { kind: 'npc', tile: { x: 24, y: 5 }, model: 'chorister', face: 'west', door: 'town-choir' },
+    { kind: 'npc', tile: { x: 25, y: 6 }, model: 'chorister-2', face: 'west', door: 'town-choir' },
+    { kind: 'prop', tile: { x: 25, y: 27 }, model: 'bell-tower' },
     { kind: 'fragment', tile: { x: 22, y: 2 }, id: 'fragment-town' },
     { kind: 'exit', tiles: [{ x: 24, y: 2 }], to: 'hub', at: { x: 14, y: 8 } },
   ],
@@ -515,6 +553,10 @@ export const JAZZ: AreaDef = {
         refRange: ROOTS,
       },
     },
+    { kind: 'npc', tile: { x: 10, y: 14 }, model: 'doorman', face: 'east', door: 'jazz-club' },
+    { kind: 'npc', tile: { x: 34, y: 12 }, model: 'bassist', face: 'south', door: 'jazz-bandstand' },
+    { kind: 'npc', tile: { x: 35, y: 13 }, model: 'drummer', face: 'south', door: 'jazz-bandstand' },
+    { kind: 'npc', tile: { x: 41, y: 12 }, model: 'hornplayer', face: 'south', door: 'jazz-boss' },
     { kind: 'fragment', tile: { x: 55, y: 15 }, id: 'fragment-jazz' },
     { kind: 'exit', tiles: [{ x: 59, y: 15 }], to: 'hub', at: { x: 27, y: 8 } },
   ],
@@ -548,6 +590,11 @@ export const STAGE: AreaDef = {
   entities: [
     { kind: 'exit', tiles: [{ x: 14, y: 16 }], to: 'hub', at: { x: 14, y: 14 } },
     { kind: 'practice', tile: { x: 22, y: 12 }, at: { x: 22, y: 13 }, lesson: 'stage' },
+    { kind: 'npc', tile: { x: 10, y: 4 }, model: 'bassist', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 11, y: 4 }, model: 'drummer', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 18, y: 4 }, model: 'hornplayer', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 19, y: 4 }, model: 'chorister', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 20, y: 4 }, model: 'chorister-2', face: 'south', door: 'stage-song' },
     {
       kind: 'door',
       tiles: [{ x: 14, y: 3 }],
