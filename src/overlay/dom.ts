@@ -7,6 +7,6 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = ''
   return e;
 }
 
-export function clear(e: HTMLElement): void {
+export function clear(e: Element): void {
   while (e.firstChild) e.removeChild(e.firstChild);
 }

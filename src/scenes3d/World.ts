@@ -7,20 +7,37 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { LoadAssetContainerAsync } from '@babylonjs/core/Loading/sceneLoader';
 import type { Material } from '@babylonjs/core/Materials/material';
-import type { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
+import { CreatePolyhedron } from '@babylonjs/core/Meshes/Builders/polyhedronBuilder';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { AssetContainer } from '@babylonjs/core/assetContainer';
 import '@babylonjs/loaders/glTF';
-import { footstep } from '../audio/sfx';
-import { progress, saveProgress } from '../state';
-import { AREAS, type AreaDef } from '../world/areas';
+import { AudioEngine } from '../audio/engine';
+import { MusicPlayer } from '../audio/music';
+import { doorOpen, footstep, gateLocked, panelOpen } from '../audio/sfx';
+import { playCadence, playChord, playNote, playSequence } from '../audio/synth';
+import { hzToMidi } from '../ear/pitchMath';
+import { pipeForCode } from '../ear/pipes';
+import type { Hud } from '../overlay/Hud';
+import type { LessonOverlay } from '../overlay/LessonOverlay';
+import type { MapOverlay } from '../overlay/MapOverlay';
+import type { PuzzlePanel } from '../overlay/PuzzlePanel';
+import type { StoryCard } from '../overlay/StoryCard';
+import { mic } from '../overlay/Title';
+import { el } from '../overlay/dom';
+import { VOICE_AFTER_QUIET, VOICE_DRILL_CAP, VOICE_MAX, progress, saveProgress } from '../state';
+import { AREAS, type AreaDef, type DoorDef, type GateDef, type PracticeDef } from '../world/areas';
+import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
+import { PuzzleRunner } from '../world/puzzleRunner';
+import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec } from '../world/puzzles';
 import { Grid } from './grid';
-import { hexToColor3 } from './materials';
-import { toStandard } from './materials';
+import { hexToColor3, toStandard } from './materials';
 import { Player } from './Player';
+import { listeningStatus, playPrompt, playSongLayers } from './prompts';
 
 /** Camera offset from the player, in tiles: high and to the south, looking north over the player's shoulder. */
 const CAM_OFFSET = new Vector3(0, 8.6, 7.6);
@@ -35,12 +52,55 @@ export interface WorldStart {
 export interface WorldHooks {
   /** Walked onto an exit: load the next area. */
   onExit(to: string, at: { x: number; y: number }): void;
+  /** The song was sung: show the results. */
+  onFinished(): void;
+  /** Fade the screen to black (on) or back (off); resolves when done. */
+  fade(on: boolean, ms: number): Promise<void>;
+}
+
+export interface Overlays {
+  ui: HTMLDivElement;
+  hud: Hud;
+  panel: PuzzlePanel;
+  mapView: MapOverlay;
+  lessonView: LessonOverlay;
+  storyCard: StoryCard;
+}
+
+interface DoorView {
+  def: DoorDef;
+  /** Meshes per tile, in the order of def.tiles. */
+  tiles: AbstractMesh[][];
+  solved: boolean;
+}
+
+interface GateView {
+  def: GateDef;
+  tiles: AbstractMesh[][];
+  open: boolean;
+}
+
+interface Bloom {
+  cx: number;
+  cy: number;
+  t0: number;
+  speed: number; // tiles per second
+  max: number;
+}
+
+interface Anim {
+  mesh: AbstractMesh;
+  from: Vector3;
+  to: Vector3;
+  t0: number;
+  dur: number;
+  onDone?: () => void;
 }
 
 /**
- * One area in 3D: the Blender-built glb, the tile grid, the player, a follow camera and the sun.
- * Interactions, puzzles and colour arrive in later phases; the names the glb uses for doors,
- * gates and the bench are listed in scripts/blender/build_area.py.
+ * One area in 3D: the Blender-built glb, the tile grid, the player, a follow camera and the sun,
+ * and everything the player can do there: doors, gates, the bench, the fragment, the exits.
+ * The names the glb uses for doors, gates and the bench are listed in scripts/blender/build_area.py.
  */
 export class World {
   readonly scene: Scene;
@@ -49,36 +109,71 @@ export class World {
   readonly grid: Grid;
   player!: Player;
   camera!: TargetCamera;
+  runner: PuzzleRunner | null = null;
+  readonly panel: PuzzlePanel;
+  readonly storyCard: StoryCard;
+  ready = false;
+  /** Per-tile life, 0 (grey) to 1 (in colour), row-major. Read by the colour pass. */
+  readonly life: Float32Array;
+  private lifeTarget: Float32Array;
+  private blooms: Bloom[] = [];
   private sun!: DirectionalLight;
   private shadows!: ShadowGenerator;
   private container!: AssetContainer;
   private matCache = new Map<Material, StandardMaterial>();
   private keys = new Set<string>();
   private camPos = new Vector3();
+  private shakeUntil = 0;
   private transitioning = false;
-  /** Set by the app while an overlay owns the keyboard. */
-  inputLocked = false;
-  ready = false;
+  private doors: DoorView[] = [];
+  private gates: GateView[] = [];
+  private practice: PracticeDef | null = null;
+  private fragment: Mesh | null = null;
+  private fragmentT = 0;
+  private anims: Anim[] = [];
+  private timers = new Set<number>();
+  private drilling = false;
+  private voiceMidi: number | null = null;
+  private voiceMuteUntil = 0;
+  private lastBump = 0;
+  private bubble: HTMLDivElement;
+  private hud: Hud;
+  private mapView: MapOverlay;
+  private lessonView: LessonOverlay;
+  private disposed = false;
   private onKey = (e: KeyboardEvent) => this.keyEvent(e);
+  private onBlur = () => this.keys.clear();
 
   private constructor(
     readonly engine: Engine,
     areaId: string,
     private hooks: WorldHooks,
+    overlays: Overlays,
   ) {
     this.area = AREAS[areaId] ?? AREAS.hub;
     this.palette = PALETTES[this.area.palette];
     this.grid = new Grid(this.area);
+    this.life = new Float32Array(this.grid.w * this.grid.h);
+    this.lifeTarget = new Float32Array(this.grid.w * this.grid.h);
     this.scene = new Scene(engine);
     this.scene.useRightHandedSystem = true;
+    this.hud = overlays.hud;
+    this.panel = overlays.panel;
+    this.mapView = overlays.mapView;
+    this.lessonView = overlays.lessonView;
+    this.storyCard = overlays.storyCard;
+    this.bubble = el('div', 'bubble hidden', 'Space');
+    overlays.ui.appendChild(this.bubble);
   }
 
-  static async create(engine: Engine, start: WorldStart, hooks: WorldHooks): Promise<World> {
+  static async create(engine: Engine, start: WorldStart, hooks: WorldHooks, overlays: Overlays): Promise<World> {
     const areaId = start.area ?? progress.area ?? 'hub';
-    const w = new World(engine, areaId, hooks);
+    const w = new World(engine, areaId, hooks, overlays);
     await w.build(start);
     return w;
   }
+
+  // ---------- building ----------
 
   private async build(start: WorldStart): Promise<void> {
     const scene = this.scene;
@@ -89,7 +184,6 @@ export class World {
     scene.fogDensity = 0.016;
     scene.fogColor = sky;
 
-    // Lights: a warm sun from the south-west and a cool sky fill.
     const hemi = new HemisphericLight('sky', new Vector3(0.1, 1, 0.2), scene);
     hemi.intensity = 0.42;
     hemi.diffuse = new Color3(0.78, 0.82, 0.95);
@@ -112,100 +206,572 @@ export class World {
     this.shadows.normalBias = 0.02;
     this.shadows.darkness = 0.35;
 
-    // The camera is placed by hand every frame; no inputs.
     this.camera = new TargetCamera('cam', new Vector3(0, 10, 10), scene);
     this.camera.fov = 0.62;
     this.camera.minZ = 0.5;
     this.camera.maxZ = 120;
 
-    // The area.
     this.container = await LoadAssetContainerAsync(`world/${this.area.id}.glb`, scene);
+    if (this.disposed) return;
     this.container.addAllToScene();
     for (const m of this.container.meshes) {
       toStandard(m, scene, this.matCache);
-      // RGBA vertex colours would otherwise put the mesh in the transparent pass.
       m.hasVertexAlpha = false;
       m.isPickable = false;
       m.receiveShadows = true;
       if (m.getTotalVertices() > 0 && m.name !== 'water') this.shadows.addShadowCaster(m, false);
       if (m.name === 'ground') m.freezeWorldMatrix();
     }
+    this.buildEntities();
 
-    // Open doors and gates from saved progress (phase 2 animates these; here they are just removed).
-    for (const e of this.area.entities) {
-      if (e.kind === 'door' && progress.solved.includes(e.puzzle.id)) {
-        for (const t of e.tiles) this.grid.setBlocked(t.x, t.y, false);
-        this.meshesNamed(`door:${e.puzzle.id}:`).forEach((m) => m.setEnabled(false));
-      }
-      if (e.kind === 'practice') this.grid.setBlocked(e.tile.x, e.tile.y, true);
-    }
-
-    // The player.
     this.player = await Player.load(scene, this.matCache);
+    if (this.disposed) return;
     for (const m of this.player.meshes) this.shadows.addShadowCaster(m, false);
     const at = start.at ?? (progress.area === this.area.id && progress.x > 0 ? { x: progress.x, y: progress.y } : this.area.start);
     this.player.setPosition(at.x + 0.5, at.y + 0.5);
     this.player.face(0, 1);
     progress.area = this.area.id;
-    saveProgress(progress);
     this.camPos.copyFrom(this.player.root.position).addInPlace(CAM_OFFSET);
     this.placeCamera(1);
 
+    // Colour already won: solved doors light their surroundings at once.
+    for (const d of this.doors) if (d.solved) this.blooms.push({ cx: d.def.tiles[0].x, cy: d.def.tiles[0].y, t0: -1e9, speed: 1e9, max: 14 });
+    if (this.areaComplete() || progress.finished) this.blooms.push({ cx: 0, cy: 0, t0: -1e9, speed: 1e9, max: 1e9 });
+    this.updateColour(1000, performance.now());
+    this.refreshGates(true);
+
+    this.panel.setPalette(this.palette);
+    this.lessonView.setPalette(this.palette);
+    this.lessonView.onHear = (page) => this.playDemo(page);
+    this.lessonView.onDrill = () => this.startDrill();
+    this.lessonView.onLeave = () => this.lessonView.hide();
+    this.hud.show(this.area.name);
+    if (!progress.cardsSeen.includes(this.area.id)) {
+      const ok = await this.storyCard.show(this.area.id, this.area.name);
+      if (ok) progress.cardsSeen.push(this.area.id);
+    }
+    saveProgress(progress);
+    MusicPlayer.get().play(this.area.id, progress.finished);
+    MusicPlayer.get().setLife(this.areaLife());
+
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKey);
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', this.onBlur);
     this.ready = true;
   }
 
-  meshesNamed(prefix: string): AbstractMesh[] {
-    return this.scene.meshes.filter((m) => m.name.startsWith(prefix));
+  private buildEntities(): void {
+    for (const e of this.area.entities) {
+      if (e.kind === 'door') {
+        const solved = progress.solved.includes(e.puzzle.id);
+        const tiles = e.tiles.map((_, i) => this.meshesNamed(`door:${e.puzzle.id}:${i}`));
+        if (solved) {
+          for (const t of e.tiles) this.grid.setBlocked(t.x, t.y, false);
+          for (const ms of tiles) for (const m of ms) m.setEnabled(false);
+        }
+        this.doors.push({ def: e, tiles, solved });
+      } else if (e.kind === 'gate') {
+        const tiles = e.tiles.map((_, i) => this.meshesNamed(`gate:${e.flag}:${i}`));
+        this.gates.push({ def: e, tiles, open: false });
+      } else if (e.kind === 'practice') {
+        this.grid.setBlocked(e.tile.x, e.tile.y, true);
+        this.practice = e;
+      } else if (e.kind === 'fragment' && !progress.solved.includes(e.id)) {
+        const gem = CreatePolyhedron('fragment', { type: 1, size: 0.22 }, this.scene);
+        const mat = new StandardMaterial('fragment', this.scene);
+        mat.diffuseColor = hexToColor3(this.palette.accent);
+        mat.emissiveColor = hexToColor3(this.palette.accent).scale(0.7);
+        mat.specularColor = new Color3(0.4, 0.4, 0.4);
+        gem.material = mat;
+        gem.position.set(e.tile.x + 0.5, 0.7, e.tile.y + 0.5);
+        this.shadows.addShadowCaster(gem, false);
+        this.fragment = gem;
+      }
+    }
   }
+
+  /** Meshes whose glTF name starts with `prefix` (a node with several materials splits into `_primitiveN` meshes). */
+  meshesNamed(prefix: string): AbstractMesh[] {
+    return this.scene.meshes.filter((m) => m.name === prefix || m.name.startsWith(prefix + '_primitive') || m.name.startsWith(prefix + '.'));
+  }
+
+  // ---------- helpers ----------
+
+  private later(ms: number, fn: () => void): void {
+    const id = window.setTimeout(() => {
+      this.timers.delete(id);
+      if (!this.disposed) fn();
+    }, ms);
+    this.timers.add(id);
+  }
+
+  private wait(ms: number): Promise<void> {
+    return new Promise((r) => this.later(ms, r));
+  }
+
+  /** Slide a mesh from where it is to `to` over `dur` ms. */
+  private slide(mesh: AbstractMesh, to: Vector3, dur: number, onDone?: () => void): void {
+    this.anims.push({ mesh, from: mesh.position.clone(), to, t0: performance.now(), dur, onDone });
+  }
+
+  private setVoice(v: number, flash = -1): void {
+    progress.voice = Math.max(0, Math.min(VOICE_MAX, v));
+    this.hud.refresh(flash);
+    saveProgress(progress);
+  }
+
+  private toast(text: string, ms = 3200): void {
+    this.hud.toast(text, ms);
+  }
+
+  private shake(): void {
+    this.shakeUntil = performance.now() + 120;
+  }
+
+  get inputLocked(): boolean {
+    return !!this.runner || this.transitioning || this.mapView.visible || this.lessonView.visible || this.storyCard.visible;
+  }
+
+  // ---------- colour ----------
+
+  areaLife(): number {
+    const doors = this.doors.length || 1;
+    return this.doors.filter((d) => d.solved).length / doors;
+  }
+
+  private areaComplete(): boolean {
+    return this.doors.every((d) => d.solved);
+  }
+
+  private bloomAt(x: number, y: number, max = 14): void {
+    this.blooms.push({ cx: x, cy: y, t0: performance.now(), speed: 9, max });
+  }
+
+  /** Spread the blooms through the tile targets and ease each tile's life toward its target. */
+  private updateColour(dt: number, now: number): void {
+    const { w, h } = this.grid;
+    for (const b of this.blooms) {
+      const r = Math.min(b.max, ((now - b.t0) / 1000) * b.speed);
+      const r2 = r * r;
+      const x0 = Math.max(0, Math.floor(b.cx - r));
+      const x1 = Math.min(w - 1, Math.ceil(b.cx + r));
+      const y0 = Math.max(0, Math.floor(b.cy - r));
+      const y1 = Math.min(h - 1, Math.ceil(b.cy + r));
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const dx = x - b.cx;
+          const dy = y - b.cy;
+          if (dx * dx + dy * dy <= r2) this.lifeTarget[y * w + x] = 1;
+        }
+      }
+    }
+    this.blooms = this.blooms.filter((b) => ((now - b.t0) / 1000) * b.speed < b.max + 1);
+    const k = Math.min(1, dt / 220);
+    for (let i = 0; i < this.life.length; i++) {
+      const d = this.lifeTarget[i] - this.life[i];
+      if (Math.abs(d) < 0.004) {
+        this.life[i] = this.lifeTarget[i];
+        continue;
+      }
+      this.life[i] += d * k;
+    }
+    const sky = hexToColor3(lerpColor(GREY.sky, this.palette.sky, this.areaLife()));
+    this.scene.clearColor = new Color4(sky.r, sky.g, sky.b, 1);
+    this.scene.fogColor = sky;
+  }
+
+  // ---------- movement ----------
 
   private keyEvent(e: KeyboardEvent): void {
     if (e.type === 'keydown') {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code);
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      this.onKeyDown(e);
     } else this.keys.delete(e.code);
   }
 
   private placeCamera(k: number): void {
     const target = this.player.root.position.add(CAM_OFFSET);
     this.camPos.addInPlace(target.subtract(this.camPos).scale(k));
-    this.camera.position.copyFrom(this.camPos);
+    const jitter = performance.now() < this.shakeUntil ? new Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, 0) : Vector3.Zero();
+    this.camera.position.copyFrom(this.camPos).addInPlace(jitter);
     this.camera.setTarget(this.camPos.subtract(CAM_OFFSET).add(CAM_LOOK));
-    // The sun's shadow box follows the player.
     this.sun.position = this.player.root.position.subtract(this.sun.direction.scale(30));
-  }
-
-  /** Called every frame by the app. dt in seconds. */
-  update(dt: number, timeMs: number): void {
-    if (!this.ready) return;
-    const k = this.keys;
-    let dx = 0;
-    let dz = 0;
-    if (!this.inputLocked && !this.transitioning) {
-      if (k.has('ArrowLeft') || k.has('KeyA')) dx -= 1;
-      if (k.has('ArrowRight') || k.has('KeyD')) dx += 1;
-      if (k.has('ArrowUp') || k.has('KeyW')) dz -= 1;
-      if (k.has('ArrowDown') || k.has('KeyS')) dz += 1;
-    }
-    const moving = dx !== 0 || dz !== 0;
-    if (moving) {
-      if (dx && dz) (dx *= Math.SQRT1_2), (dz *= Math.SQRT1_2);
-      const step = WALK_SPEED * dt;
-      const r = this.grid.move(this.player.x, this.player.z, dx * step, dz * step);
-      this.player.setPosition(r.x, r.z);
-      this.player.face(dx, dz);
-      this.checkExit();
-    }
-    this.player.setMoving(moving);
-    if (this.player.update(dt, timeMs)) footstep();
-    this.placeCamera(Math.min(1, dt * 6));
   }
 
   playerTile(): { x: number; y: number } {
     return this.grid.tileOf(this.player.x, this.player.z);
+  }
+
+  private bump(tile: { x: number; y: number }): void {
+    const now = performance.now();
+    if (now - this.lastBump < 1200) return;
+    for (const g of this.gates) {
+      if (!g.open && g.def.tiles.some((t) => t.x === tile.x && t.y === tile.y)) {
+        this.lastBump = now;
+        gateLocked();
+        this.toast(g.def.lockedLine);
+        playNote(45, { timbre: 'bass', duration: 0.2, gain: 0.3 });
+      }
+    }
+  }
+
+  private nearestDoor(): DoorView | null {
+    const pt = this.playerTile();
+    let best: DoorView | null = null;
+    let bestD = 2.2;
+    for (const d of this.doors) {
+      if (d.solved) continue;
+      for (const t of d.def.tiles) {
+        const dist = Math.hypot(t.x - pt.x, t.y - pt.y);
+        if (dist < bestD) {
+          bestD = dist;
+          best = d;
+        }
+      }
+    }
+    return best;
+  }
+
+  private nearPractice(): boolean {
+    if (!this.practice) return false;
+    const pt = this.playerTile();
+    const t = this.practice.tile;
+    return Math.hypot(t.x - pt.x, t.y - pt.y) < 2.2;
+  }
+
+  // ---------- practice ----------
+
+  private openLesson(): void {
+    const p = this.practice;
+    if (!p) return;
+    const lesson = LESSONS[p.lesson];
+    if (!lesson) return;
+    void AudioEngine.get().unlock();
+    panelOpen();
+    this.lessonView.show(lesson);
+    this.hud.setHint('');
+  }
+
+  private playDemo(page: LessonPage): void {
+    const d: Demo | undefined = page.demo;
+    if (!d) return;
+    const engine = AudioEngine.get();
+    const base = 60;
+    let t = engine.now + 0.06;
+    if (d.cadence) t = playCadence(base, { at: t, speed: 1 }) + 0.3;
+    if (d.notes) {
+      const beat = d.gap ?? 0.42;
+      d.notes.forEach((o, i) => {
+        const len = (d.beats?.[i] ?? 1) * beat;
+        playNote(base + o, { timbre: d.timbre ?? 'pipe', at: t, duration: Math.min(1.4, len * 0.9), gain: 0.5 });
+        t += len;
+      });
+    }
+    if (d.chord) t = playChord(d.chord.map((o) => base + o), { timbre: d.timbre ?? 'pad', at: t, duration: 1.4, gain: 0.8 });
+    if (d.chords) {
+      for (const c of d.chords) {
+        playNote(base - 12 + c[0], { timbre: 'bass', at: t, duration: (d.gap ?? 1.1) * 0.95, gain: 0.3 });
+        playChord(c.map((o) => base + o), { timbre: d.timbre ?? 'pad', at: t, duration: (d.gap ?? 1.1) * 0.95, gain: 0.8 });
+        t += d.gap ?? 1.1;
+      }
+    }
+  }
+
+  private startDrill(): void {
+    const p = this.practice;
+    if (!p) return;
+    const lesson = LESSONS[p.lesson];
+    this.lessonView.hide();
+    void this.startPuzzle(null, lesson.drill);
+  }
+
+  /** The voice ran out: the door closes and the player wakes at the bench with a little voice back. */
+  private async goQuiet(): Promise<void> {
+    const p = this.practice;
+    progress.quiets = (progress.quiets ?? 0) + 1;
+    this.endPuzzle(false);
+    this.setVoice(VOICE_AFTER_QUIET);
+    this.transitioning = true;
+    playSequence([52, 48, 45], { timbre: 'bass', duration: 0.5, gap: 0.3, gain: 0.35 });
+    await this.hooks.fade(true, 900);
+    if (this.disposed) return;
+    if (p) this.player.setPosition(p.at.x + 0.5, p.at.y + 0.5);
+    this.camPos.copyFrom(this.player.root.position).addInPlace(CAM_OFFSET);
+    this.placeCamera(1);
+    await this.hooks.fade(false, 700);
+    this.transitioning = false;
+    this.toast(p ? 'Your voice gave out. You wake at the practice bench. Space: a lesson and a free drill to get it back.' : 'Your voice gave out. Rest a moment.', 6000);
+  }
+
+  // ---------- puzzles ----------
+
+  private onKeyDown(ev: KeyboardEvent): void {
+    if (this.storyCard.visible) {
+      if (ev.code === 'Space' || ev.code === 'Enter' || ev.code === 'Escape') this.storyCard.hide();
+      return;
+    }
+    if (this.mapView.visible) {
+      if (ev.code === 'KeyM' || ev.code === 'Escape' || ev.code === 'Space') this.mapView.hide();
+      return;
+    }
+    if (this.lessonView.visible) {
+      if (ev.code === 'Escape') this.lessonView.hide();
+      else if (ev.code === 'Space') this.lessonView.hear();
+      else if (ev.code === 'ArrowRight' || ev.code === 'KeyD') this.lessonView.go(1);
+      else if (ev.code === 'ArrowLeft' || ev.code === 'KeyA') this.lessonView.go(-1);
+      else if (ev.code === 'Enter') this.startDrill();
+      return;
+    }
+    if (!this.runner && ev.code === 'KeyM') {
+      this.mapView.show(this.area);
+      return;
+    }
+    if (this.runner) {
+      if (ev.code === 'Space') {
+        void this.runner.replay();
+        return;
+      }
+      if (ev.code === 'Escape') {
+        this.endPuzzle(false);
+        return;
+      }
+      if (this.runner.isChoice) {
+        const i = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(ev.code);
+        if (i >= 0) void this.runner.attemptChoice(CHORD_QUALITIES[i]);
+        return;
+      }
+      if (ev.code === 'Enter') {
+        void this.runner.confirm();
+        return;
+      }
+      const hit = pipeForCode(ev.code);
+      if (hit !== null) this.playPipe(hit);
+      return;
+    }
+    if (ev.code === 'Space') {
+      if (this.transitioning) return;
+      const d = this.nearestDoor();
+      if (d) void this.startPuzzle(d, d.def.puzzle);
+      else if (this.nearPractice()) this.openLesson();
+    }
+  }
+
+  /** A key pressed or clicked: sound it and hold it as the note Enter will answer with. */
+  private playPipe(midi: number): void {
+    if (!this.runner) return;
+    playNote(midi, { duration: 0.5, gain: 0.5, out: AudioEngine.get().keys });
+    this.voiceMuteUntil = performance.now() + 700;
+    this.panel.flashPipe(midi);
+    this.runner.audition(midi);
+  }
+
+  private async startPuzzle(d: DoorView | null, spec: PuzzleSpec): Promise<void> {
+    await AudioEngine.get().unlock();
+    if (this.disposed) return;
+    const question = makeQuestion(spec, Math.random, progress.misses);
+    this.drilling = d === null;
+    const runner = new PuzzleRunner(question, {
+      playPrompt: (step, slow) => playPrompt(runner, step, slow, (s) => this.panel.setStatus(s)),
+      onListening: () => this.panel.setStatus(listeningStatus(runner)),
+      onStepSolved: (i) => this.onStepSolved(d, i),
+      onSolved: () => (d ? this.onSolved(d) : this.onDrillSolved()),
+      onMiss: (midi) => this.onMiss(midi),
+    });
+    if (!d) runner.hintOffset = 1;
+    this.runner = runner;
+    MusicPlayer.get().setPaused(true);
+    panelOpen();
+    this.panel.onSign = (q) => void runner.attemptChoice(q);
+    this.panel.onKey = (midi) => this.playPipe(midi);
+    this.panel.onAnswer = () => void runner.confirm();
+    this.panel.show(runner);
+    this.hud.setHint('');
+    this.player.setMoving(false);
+    if (d) {
+      const t = d.def.tiles[0];
+      this.player.face(t.x + 0.5 - this.player.x, t.y + 0.5 - this.player.z);
+    }
+    void runner.start();
+  }
+
+  private onStepSolved(d: DoorView | null, index: number): Promise<void> {
+    const engine = AudioEngine.get();
+    engine.setDuck(1);
+    const step = this.runner!.question.steps[index];
+    if (!d && progress.voice < VOICE_DRILL_CAP) {
+      this.setVoice(progress.voice + 1);
+      this.panel.setStatus(`Yes: ${step.label.toLowerCase()}. A note of voice back.`);
+    } else this.panel.setStatus(`Yes: ${step.label.toLowerCase()}.`);
+    if (d?.def.puzzle.id === 'stage-song') playSongLayers(index, step);
+    else if (step.mode === 'melody') playNote(step.targetMidi, { timbre: 'pad', duration: 0.6, gain: 0.5 });
+    else if (step.spec.kind === 'chordName') playChord(CHORD_TONES[step.spec.quality].map((o) => step.refMidi + o), { timbre: 'bell', duration: 0.6, gain: 0.7 });
+    else if (step.spec.kind === 'chordTone') {
+      playChord(CHORD_TONES[step.spec.quality].map((o) => step.refMidi + o), { timbre: 'pad', duration: 0.8, gain: 0.6 });
+      playNote(step.targetMidi, { timbre: 'bell', duration: 0.6, gain: 0.5 });
+    } else if (step.spec.kind === 'resolve') {
+      const t0 = engine.now + 0.05;
+      playNote(step.refMidi - 12, { timbre: 'bass', at: t0, duration: 1.4, gain: 0.4 });
+      playChord(CHORD_TONES.maj7.map((o) => step.refMidi + o), { timbre: 'pad', at: t0, duration: 1.4, gain: 0.8 });
+      playNote(step.refMidi + 12, { timbre: 'bell', at: t0, duration: 1.0, gain: 0.45 });
+    } else if (step.spec.kind === 'degree') playNote(step.targetMidi, { timbre: 'bell', duration: 0.5, gain: 0.5 });
+    else playSequence([step.refMidi, step.targetMidi], { timbre: 'bell', duration: 0.35, gap: 0.18, gain: 0.5 });
+    // A multi-tile door (the serpent) sinks one segment per step.
+    if (d && d.def.tiles.length > 1 && index < d.tiles.length) for (const m of d.tiles[index]) this.slide(m, m.position.add(new Vector3(0, -0.3, 0)), 400);
+    return this.wait(step.mode === 'melody' ? 350 : step.spec.kind === 'resolve' ? 1500 : 900);
+  }
+
+  /** The whole song with every layer, then the kingdom's colour and the results. */
+  private finishKingdom(d: DoorView): void {
+    const q = this.runner!.question;
+    const engine = AudioEngine.get();
+    const beat = 0.42;
+    const t0 = engine.now + 0.4;
+    q.steps.forEach((st, i) => playSongLayers(i, st, t0 + i * beat));
+    const last = q.steps[q.steps.length - 1];
+    const tEnd = t0 + q.steps.length * beat;
+    playChord([last.refMidi - 24, last.refMidi - 12, last.refMidi + 4, last.refMidi + 7, last.refMidi + 12], { timbre: 'pad', at: tEnd, duration: 2.5, gain: 0.8 });
+    playNote(last.refMidi + 12, { timbre: 'bell', at: tEnd, duration: 1.5, gain: 0.5 });
+    progress.finished = true;
+    progress.finishedAt = Date.now();
+    saveProgress(progress);
+    this.endPuzzle(true);
+    this.toast('Three fragments, one song. Listen: the kingdom answers.', 6000);
+    const t = d.def.tiles[0];
+    this.later((tEnd - engine.now) * 1000 - 400, () => this.bloomAt(t.x, t.y, 1e9));
+    this.later((tEnd - engine.now) * 1000 + 2600, () => {
+      this.transitioning = true;
+      void this.hooks.fade(true, 700).then(() => this.hooks.onFinished());
+    });
+  }
+
+  private onMiss(attempt: number | ChordQuality): Promise<void> {
+    const engine = AudioEngine.get();
+    engine.setDuck(1);
+    const r = this.runner!;
+    if (!this.drilling) {
+      progress.areaMisses[this.area.id] = (progress.areaMisses[this.area.id] ?? 0) + 1;
+      this.setVoice(progress.voice - 1, progress.voice - 1);
+      if (progress.voice <= 0) {
+        this.panel.setStatus('Your voice gives out…');
+        return this.wait(700).then(() => void this.goQuiet());
+      }
+    }
+    if (r.step.spec.kind === 'degree') {
+      const key = `degree-${r.step.spec.degree}`;
+      progress.misses[key] = (progress.misses[key] ?? 0) + 1;
+    }
+    if (typeof attempt === 'string') {
+      const key = `chord-${attempt}`;
+      progress.misses[key] = (progress.misses[key] ?? 0) + 1;
+      this.panel.setStatus(r.hintLevel >= 3 ? 'The sign is lit. Pick it.' : `Not ${CHORD_NAMES[attempt].toLowerCase()}. Listen again.`);
+      playNote(r.step.refMidi - 12, { timbre: 'bass', duration: 0.25, gain: 0.25 });
+      this.shake();
+      return this.wait(700);
+    }
+    const midi = attempt;
+    const dist = (((midi - r.step.refMidi) % 12) + 12) % 12;
+    const target = r.step.targetMidi - r.step.refMidi;
+    const dir = dist < target || (target === 12 && dist === 0) ? 'a little higher' : 'a little lower';
+    this.panel.setStatus(r.hintLevel >= 3 ? 'The note is marked on the ladder. Match it.' : `Not that one. Try ${dir}.`);
+    playNote(midi, { timbre: 'bass', duration: 0.25, gain: 0.25 });
+    this.shake();
+    return this.wait(700);
+  }
+
+  private onDrillSolved(): void {
+    const q = this.runner!.question;
+    doorOpen(q.steps[0].refMidi);
+    this.endPuzzle(true);
+    const v = progress.voice;
+    this.toast(v >= VOICE_DRILL_CAP ? `Practice done. Voice ${v} of ${VOICE_MAX}. Doors give the rest. Space: practise again.` : `Practice done. Voice ${v} of ${VOICE_MAX}. Space: practise again.`, 5000);
+    saveProgress(progress);
+  }
+
+  private onSolved(d: DoorView): void {
+    d.solved = true;
+    this.setVoice(VOICE_MAX);
+    if (!progress.solved.includes(d.def.puzzle.id)) progress.solved.push(d.def.puzzle.id);
+    for (const t of d.def.tiles) this.grid.setBlocked(t.x, t.y, false);
+    // The door sinks into the ground and is gone.
+    for (const ms of d.tiles) for (const m of ms) this.slide(m, m.position.add(new Vector3(0, -1.8, 0)), 700, () => m.setEnabled(false));
+    const t0 = d.def.tiles[0];
+    if (d.def.puzzle.id === 'stage-song') {
+      this.finishKingdom(d);
+      return;
+    }
+    this.bloomAt(t0.x, t0.y, this.areaComplete() ? 1e9 : 14);
+    const q = this.runner!.question;
+    doorOpen(q.steps[0].refMidi);
+    this.later(700, () => playSequence(q.steps.map((s) => s.targetMidi).concat([q.steps[0].targetMidi + 12]), { timbre: 'bell', duration: 0.3, gap: 0.14, gain: 0.45 }));
+    this.endPuzzle(true);
+    this.toast(d.def.tiles.length > 1 ? 'The serpent lies down. A bridge.' : d.def.puzzle.id === 'jazz-boss' ? 'The band plays the whole set. The door is yours.' : 'The way opens.');
+    saveProgress(progress);
+  }
+
+  private endPuzzle(solved: boolean): void {
+    this.runner?.abort();
+    this.runner = null;
+    this.drilling = false;
+    this.panel.hide();
+    AudioEngine.get().setDuck(1);
+    this.later(solved ? 1800 : 300, () => {
+      if (!this.runner) MusicPlayer.get().setPaused(false);
+    });
+  }
+
+  // ---------- pickups, exits, gates ----------
+
+  flags(): Set<string> {
+    const flags = new Set<string>();
+    if (AREAS.valley.entities.filter((e) => e.kind === 'door').every((e) => progress.solved.includes((e as DoorDef).puzzle.id)) && progress.solved.includes('fragment-valley')) flags.add('valley-complete');
+    if (progress.solved.includes('fragment-town')) flags.add('town-complete');
+    if (progress.fragments >= 3) flags.add('all-fragments');
+    return flags;
+  }
+
+  private refreshGates(instant = false): void {
+    const flags = this.flags();
+    for (const g of this.gates) {
+      const open = flags.has(g.def.flag);
+      if (open !== g.open) {
+        g.open = open;
+        for (const t of g.def.tiles) this.grid.setBlocked(t.x, t.y, !open);
+        for (const ms of g.tiles) {
+          for (const m of ms) {
+            if (open && instant) m.setEnabled(false);
+            else if (open) this.slide(m, m.position.add(new Vector3(0, -1.6, 0)), 900, () => m.setEnabled(false));
+          }
+        }
+      }
+    }
+  }
+
+  private checkPickup(): void {
+    const f = this.fragment;
+    if (!f) return;
+    if (Math.hypot(f.position.x - this.player.x, f.position.z - this.player.z) < 0.7) {
+      const e = this.area.entities.find((x) => x.kind === 'fragment');
+      if (e && e.kind === 'fragment' && !progress.solved.includes(e.id)) {
+        progress.solved.push(e.id);
+        progress.fragments++;
+        this.setVoice(VOICE_MAX);
+        saveProgress(progress);
+      }
+      this.fragment = null;
+      this.slide(f, f.position.add(new Vector3(0, 1.4, 0)), 700, () => f.dispose());
+      playSequence([64, 67, 71, 76], { timbre: 'bell', duration: 0.3, gap: 0.12, gain: 0.5 });
+      const lines: Record<string, string> = {
+        valley: 'A melody fragment. Your voice has grown: the valley is yours.',
+        town: 'A melody fragment. The town keeps its key, and so do you.',
+        jazz: 'The last fragment. The quarter plays again, and the stage is waiting.',
+      };
+      this.toast(lines[this.area.id] ?? 'A melody fragment.', 4000);
+      this.bloomAt(this.playerTile().x, this.playerTile().y, 1e9);
+      this.hud.refresh();
+      this.refreshGates();
+    }
   }
 
   private checkExit(): void {
@@ -225,9 +791,106 @@ export class World {
     }
   }
 
+  // ---------- loop ----------
+
+  /** Called every frame by the app. dt in seconds, timeMs from performance.now(). */
+  update(dt: number, timeMs: number): void {
+    if (!this.ready || this.disposed) return;
+
+    // Voice.
+    let hz: number | null = null;
+    if (mic?.isLive) hz = mic.read().hz;
+    const midiNow = hz ? hzToMidi(hz) : null;
+    this.voiceMidi = midiNow === null ? null : this.voiceMidi === null ? midiNow : this.voiceMidi + (midiNow - this.voiceMidi) * 0.35;
+    if (this.runner) {
+      this.runner.feedVoice(timeMs < this.voiceMuteUntil ? null : hz, timeMs);
+      this.panel.update(this.voiceMidi);
+    }
+    if (this.mapView.visible) {
+      const flags = this.flags();
+      this.mapView.update(progress, this.playerTile(), (f) => flags.has(f), timeMs);
+    }
+
+    // Movement.
+    const k = this.keys;
+    let dx = 0;
+    let dz = 0;
+    if (!this.inputLocked) {
+      if (k.has('ArrowLeft') || k.has('KeyA')) dx -= 1;
+      if (k.has('ArrowRight') || k.has('KeyD')) dx += 1;
+      if (k.has('ArrowUp') || k.has('KeyW')) dz -= 1;
+      if (k.has('ArrowDown') || k.has('KeyS')) dz += 1;
+    }
+    const moving = dx !== 0 || dz !== 0;
+    if (moving) {
+      if (dx && dz) (dx *= Math.SQRT1_2), (dz *= Math.SQRT1_2);
+      const step = WALK_SPEED * dt;
+      const r = this.grid.move(this.player.x, this.player.z, dx * step, dz * step);
+      this.player.setPosition(r.x, r.z);
+      this.player.face(dx, dz);
+      if (r.hit) this.bump(r.hit);
+      this.checkPickup();
+      this.checkExit();
+    }
+    this.player.setMoving(moving);
+    if (this.player.update(dt, timeMs)) footstep();
+
+    // What Space would do here.
+    if (!this.inputLocked) {
+      const d = this.nearestDoor();
+      if (d) {
+        const t = d.def.tiles[0];
+        this.placeBubble(t.x + 0.5, 1.7, t.y + 0.5);
+        this.hud.setHint('Space: listen to the door');
+      } else if (this.practice && this.nearPractice()) {
+        const t = this.practice.tile;
+        this.placeBubble(t.x + 0.5, 1.2, t.y + 0.5);
+        this.hud.setHint('Space: practise here');
+      } else {
+        this.bubble.classList.add('hidden');
+        this.hud.setHint(this.area.id === 'hub' && progress.solved.length === 0 ? 'Arrow keys or WASD to walk. Find the humming door.  M: map' : 'M: map');
+      }
+    } else this.bubble.classList.add('hidden');
+
+    // Animations.
+    for (const a of this.anims) {
+      const t = Math.min(1, (timeMs - a.t0) / a.dur);
+      const e = t * t * (3 - 2 * t);
+      a.mesh.position.copyFrom(Vector3.Lerp(a.from, a.to, e));
+      if (t >= 1) a.onDone?.();
+    }
+    this.anims = this.anims.filter((a) => timeMs - a.t0 < a.dur);
+    if (this.fragment) {
+      this.fragmentT += dt;
+      this.fragment.position.y = 0.7 + Math.sin(this.fragmentT * 2.2) * 0.12;
+      this.fragment.rotation.y += dt * 1.4;
+    }
+    this.updateColour(dt * 1000, timeMs);
+    MusicPlayer.get().setLife(this.areaLife());
+    this.placeCamera(Math.min(1, dt * 6));
+  }
+
+  private placeBubble(x: number, y: number, z: number): void {
+    const w = this.engine.getRenderWidth();
+    const h = this.engine.getRenderHeight();
+    const p = Vector3.Project(new Vector3(x, y, z), Matrix.Identity(), this.scene.getTransformMatrix(), this.camera.viewport.toGlobal(w, h));
+    this.bubble.style.left = `${(p.x / w) * window.innerWidth}px`;
+    this.bubble.style.top = `${(p.y / h) * window.innerHeight}px`;
+    this.bubble.classList.remove('hidden');
+  }
+
   dispose(): void {
+    this.disposed = true;
+    for (const id of this.timers) clearTimeout(id);
+    this.timers.clear();
+    this.runner?.abort();
+    this.runner = null;
+    this.panel.hide();
+    this.bubble.remove();
+    MusicPlayer.get().stop();
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('keyup', this.onKey);
+    window.removeEventListener('blur', this.onBlur);
     this.scene.dispose();
   }
 }
