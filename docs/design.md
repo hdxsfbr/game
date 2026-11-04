@@ -159,6 +159,11 @@ ear-training, not scenery, and follows the kingdom's rule that nothing moves unt
 The cues travel on a small bus (`src/audio/bandBus.ts`) from the sound to the world, timed on the
 audio clock, so the picture and the note land together.
 
+The townsfolk (2026-11-04). Everyone on the ground turns to the singer when she comes within a few
+tiles and eases back to their resting facing when she goes, so no one is met from behind. Performers
+on a stage keep facing the audience. Each person acts (nods, claps, conducts, sings, snaps) while
+their own door is being sung and idles otherwise.
+
 ### Finale: the Silent Stage (about 2 minutes)
 Built 2026-11-01. Entered from the hub's south gate once all three fragments are held. One door,
 The Song: a fifteen-note tune in C (1 3 5 8 / 6 5 3 2 / 1 3 5 6 / 5 2 1) in melody mode. The

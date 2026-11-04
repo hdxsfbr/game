@@ -168,7 +168,7 @@ export class World {
   /** A door the camera pushes in on for a moment, and until when. */
   private focus: { x: number; z: number; until: number } | null = null;
   /** People standing about, with the clip they play while their door is sung. */
-  private npcs: Array<{ def: NpcDef; top: TransformNode; baseY: number; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean; sway: number; phase: number; frozen: boolean; hitAt: number; hitUntil: number; hitStrong: boolean; sparks: ParticleSystem | null }> = [];
+  private npcs: Array<{ def: NpcDef; top: TransformNode; baseY: number; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean; sway: number; phase: number; frozen: boolean; hitAt: number; hitUntil: number; hitStrong: boolean; sparks: ParticleSystem | null; restYaw: number }> = [];
   /** Camera-to-player cutaway shared by the wall, tree and prop materials. */
   private cutaway = new CutawayState();
   /** The door whose puzzle is running, for the people who react to it. */
@@ -963,7 +963,7 @@ export class World {
       }
       for (const mat of fresh) if (this.lifeMap) new LifePlugin(mat, this.lifeMap);
     };
-    const YAW: Record<string, number> = { south: 0, west: Math.PI / 2, north: Math.PI, east: -Math.PI / 2 };
+    const YAW: Record<string, number> = { south: 0, west: -Math.PI / 2, north: Math.PI, east: Math.PI / 2 };
     const stageTiles = new Set(this.area.entities.filter((e) => e.kind === 'stage').flatMap((e) => (e as { tiles: { x: number; y: number }[] }).tiles.map((t) => `${t.x},${t.y}`)));
     for (const e of this.area.entities) {
       if (e.kind === 'npc' && people.has(e.model)) {
@@ -987,7 +987,7 @@ export class World {
           const part = (Object.keys(BAND) as BandPart[]).find((k) => BAND[k].model === e.model);
           const at = part ? BAND[part].at : null;
           const sparks = at ? sparkler(this.scene, new Vector3(top.position.x + at[0], baseY + at[1], top.position.z + at[2]), this.palette.accent) : null;
-          this.npcs.push({ def: e, top, baseY, idle, action, acting: false, sway: 0, phase: Math.random() * 6.28, frozen: false, hitAt: -1e9, hitUntil: 0, hitStrong: false, sparks });
+          this.npcs.push({ def: e, top, baseY, idle, action, acting: false, sway: 0, phase: Math.random() * 6.28, frozen: false, hitAt: -1e9, hitUntil: 0, hitStrong: false, sparks, restYaw: top.rotation.y });
           this.extrasLog.push(`npc ${e.model} loaded`);
         } catch (err) {
           this.extrasLog.push(`npc ${e.model} failed: ${String(err).slice(0, 120)}`);
@@ -1045,6 +1045,15 @@ export class World {
       const since = (now - n.hitAt) / 1000;
       const pop = since < 0.6 ? Math.exp(-since * 9) * (n.hitStrong ? 0.1 : 0.05) : 0;
       n.top.scaling.setAll(base * (1 + pop));
+      // People on the ground turn to the singer when she is near and back to their resting facing when
+      // she goes; performers on a stage keep facing the audience. Yaw 0 faces south (+z), yaw grows eastward (checked in screenshots).
+      if (n.baseY === 0) {
+        const dx = this.player.x - n.top.position.x;
+        const dz = this.player.z - n.top.position.z;
+        const goal = Math.hypot(dx, dz) < 3.5 ? Math.atan2(dx, dz) : n.restYaw;
+        const d = goal - n.top.rotation.y;
+        n.top.rotation.y += Math.atan2(Math.sin(d), Math.cos(d)) * Math.min(1, dt * 4);
+      }
       if (frozen) continue;
       const hit = now < n.hitUntil;
       const live = band ? awake : !!n.def.door && (n.def.door === this.activeDoor || (progress.finished && n.def.door === 'stage-song'));

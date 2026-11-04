@@ -55,7 +55,7 @@ export interface NpcDef {
   kind: 'npc';
   tile: { x: number; y: number };
   model: string;
-  /** Which way they face. Default south, toward the camera. */
+  /** Which way they face when alone. Default south, toward the camera. People on the ground turn to the singer when she is near. */
   face?: 'north' | 'south' | 'east' | 'west';
   /** The door whose puzzle makes them act (sing, play, nod). */
   door?: string;
