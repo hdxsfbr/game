@@ -182,6 +182,18 @@ touch at once, Play asks for fullscreen where the browser allows it, and the pag
 zoom. The door panel keeps its layout on an iPad, shrinks its keys on a phone held sideways, and
 stacks on a phone held upright with a nudge to turn it sideways. Keyboard play is unchanged.
 
+The bench guide on a phone (2026-11-04). A phone's browser lets a media element start only from
+inside a tap, so the guide's first clip spoke and every later one, started by the guide's own timer,
+was refused: the steps ran on without narration and out of step with the keys. The narration now
+plays through the Web Audio engine (`src/audio/narration.ts`), which the first tap unlocks for good,
+and a bench's clips are fetched and decoded when the guide opens.
+
+Valley hillsides (2026-11-04). The Valley's deep wall masses were a field of bevelled blocks, one per
+run of wall tiles, which read as crates. Now only the ring of wall tiles that fronts open ground is
+built as rock faces; behind them the ground itself rises into a rolling hillside (`Area.hill` in
+`build_area.py`, from a per-tile distance to open ground), a shade darker than the floor, and the
+land outside the map carries on up. Other areas keep their blocks; `HILL_STYLES` is where to add one.
+
 The bench guide (2026-11-04, for players with no music background). The first time at a bench, a
 guided walkthrough instead of the text pages: a step at a time, narrated in Andre's own voice (a
 Chatterbox clone, default model, from `src/world/narration.json`), the words also shown as a caption,

@@ -35,6 +35,9 @@ AREAS_TS = os.path.join(ROOT, 'src', 'world', 'areas.ts')
 PALETTE_TS = os.path.join(ROOT, 'src', 'world', 'palette.ts')
 
 WALL = '#'
+# Styles whose deep wall masses are hillsides (the ground rising behind a ring of rock faces) rather than fields of blocks.
+HILL_STYLES = {'valley'}
+HILL_HEIGHT = 3.4
 # Height of a stage deck; src/scenes3d/World.ts STAGE_H lifts the people standing on it by the same amount.
 STAGE_H = 0.24
 GROUND = '.'
@@ -341,6 +344,50 @@ class Area:
     def is_wall(self, x, y):
         return self.at(x, y) == WALL
 
+    def open_distance(self):
+        """Per tile, how many tiles (eight ways) to the nearest tile that is not wall; cached."""
+        if getattr(self, '_open_dist', None) is None:
+            INF = 10 ** 6
+            dist = [[INF] * self.w for _ in range(self.h)]
+            queue = []
+            for y in range(self.h):
+                for x in range(self.w):
+                    if not self.is_wall(x, y):
+                        dist[y][x] = 0
+                        queue.append((x, y))
+            i = 0
+            while i < len(queue):
+                x, y = queue[i]
+                i += 1
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        nx, ny = x + dx, y + dy
+                        if 0 <= nx < self.w and 0 <= ny < self.h and dist[ny][nx] > dist[y][x] + 1:
+                            dist[ny][nx] = dist[y][x] + 1
+                            queue.append((nx, ny))
+            self._open_dist = dist
+        return self._open_dist
+
+    def hill(self, tx, ty):
+        """The hillside height at map point (tx, ty): zero on and beside open ground, rising behind the
+        ring of rock faces (open distance 1) to HILL_HEIGHT two and a half tiles further in, with a little roll."""
+        dist = self.open_distance()
+        # The distance field sampled between tile centres, so the slopes are smooth rather than stepped.
+        fx, fy = tx - 0.5, ty - 0.5
+        ix, iy = int(math.floor(fx)), int(math.floor(fy))
+        ax, ay = fx - ix, fy - iy
+        outside = max(0, -tx, tx - self.w, -ty, ty - self.h)
+
+        def d_at(i, j):
+            ci, cj = min(max(i, 0), self.w - 1), min(max(j, 0), self.h - 1)
+            return dist[cj][ci] + outside
+
+        d = (d_at(ix, iy) * (1 - ax) + d_at(ix + 1, iy) * ax) * (1 - ay) + (d_at(ix, iy + 1) * (1 - ax) + d_at(ix + 1, iy + 1) * ax) * ay
+        t = min(1.0, max(0.0, (d - 1.0) / 2.5))
+        t = t * t * (3 - 2 * t)
+        roll = 0.35 * math.sin(tx * 0.8 + 0.7) * math.cos(ty * 0.6) + 0.15 * math.sin(tx * 1.9 + ty * 1.4)
+        return HILL_HEIGHT * t + roll * t
+
     def walkable_near(self, x, y, r=1):
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
@@ -373,13 +420,14 @@ class Area:
         def zfunc(x, y):
             tx, ty = x, -y
             inside = 0 <= tx <= self.w and 0 <= ty <= self.h
+            hill = self.hill(tx, ty) if self.style in HILL_STYLES else 0.0
             if inside:
                 z = 0.025 * math.sin(tx * 1.7) * math.cos(ty * 1.3) + 0.02 * math.sin(tx * 3.1 + ty * 2.3)
                 z -= 0.45 * water_weight(x, y)
-                return z
+                return z + hill
             d = max(0, -tx, tx - self.w, -ty, ty - self.h)
             # Outside the map the land rolls away and rises into hills behind the walls.
-            return 0.12 * math.sin(tx * 0.9 + 1.3) * math.cos(ty * 0.7) + 0.05 * d + 0.35 * math.sin(tx * 0.35) * math.sin(ty * 0.4)
+            return hill + 0.12 * math.sin(tx * 0.9 + 1.3) * math.cos(ty * 0.7) + 0.05 * d + 0.35 * math.sin(tx * 0.35) * math.sin(ty * 0.4)
 
         # Vertex colour is a brightness modulation over the material colour: a gentle checker of
         # slightly darker 'alt' tiles, as in the 2D game, plus a little per-tile noise.
@@ -393,6 +441,10 @@ class Area:
             m = 0.96 + 0.07 * (0.5 + 0.5 * math.sin(tx * 0.9 + ty * 0.6) * 0.6 + 0.4 * (k - 0.5))
             if (tx * 7 + ty * 13) % 5 == 0:
                 m *= 0.985
+            if self.style in HILL_STYLES:
+                # The hillsides a shade darker and less regular than the valley floor.
+                h = self.hill(cx, -cy)
+                m *= 1 - 0.1 * min(1.0, h / HILL_HEIGHT) + 0.03 * (k - 0.5)
             return (m, m, m)
 
         b = Builder('ground')
@@ -452,6 +504,8 @@ class Area:
                 elif self.style == 'jazz' and near:
                     prev = self.jazz_facade(b, x, y, seg, prev or self.choices.get((x, y - 1)))
                     self.choices[(x, y)] = prev
+                elif self.style in HILL_STYLES and not near:
+                    pass  # The hillside ground rises here instead (Area.hill).
                 else:
                     hgt = (1.25 + 0.5 * hash2(x, y, 2)) if near else 0.9 + 0.3 * hash2(x, y, 5)
                     b.box((cx, cy, hgt / 2 - 0.02), (seg - 0.04, 0.96, hgt), wall, bevel=0.09)
