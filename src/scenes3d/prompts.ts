@@ -1,3 +1,4 @@
+import { bandCue } from '../audio/bandBus';
 import { AudioEngine } from '../audio/engine';
 import { playCadence, playChord, playNote, playSequence } from '../audio/synth';
 import type { PuzzleRunner } from '../world/puzzleRunner';
@@ -49,11 +50,20 @@ function playChordPrompt(step: Step, slow: boolean, setStatus: (s: string) => vo
   setStatus(slow ? 'Once more, note by note…' : named ? `Listen: a ${CHORD_NAMES[spec.quality].toLowerCase()}…` : 'Listen to the chord…');
   const k = slow ? 1.4 : 1;
   const t0 = engine.now + 0.08;
+  // In the Jazz Quarter the band plays this: the bass takes the root, the drums the downbeat, the horn the chord.
   playNote(step.refMidi - 24, { timbre: 'bass', at: t0, duration: 1.3 * k, gain: 0.22 });
+  bandCue('bass', t0, 1.3 * k, true);
+  bandCue('drums', t0, 0.2, true);
+  bandCue('horn', t0, 1.3 * k);
   let end = playChord(notes, { timbre: 'chord', at: t0, duration: 1.3 * k, gain: 0.8 });
   if (slow) {
-    end = playSequence(notes, { timbre: 'pipe', at: end + 0.2, duration: 0.5 * k, gap: 0.55 * k, gain: 0.45 });
-    if (named) end = playNote(step.targetMidi, { at: end + 0.3, duration: 0.8 * k, gain: 0.55 });
+    const seqAt = end + 0.2;
+    notes.forEach((_, i) => bandCue('horn', seqAt + i * 0.55 * k, 0.5 * k));
+    end = playSequence(notes, { timbre: 'pipe', at: seqAt, duration: 0.5 * k, gap: 0.55 * k, gain: 0.45 });
+    if (named) {
+      bandCue('horn', end + 0.3, 0.8 * k, true);
+      end = playNote(step.targetMidi, { at: end + 0.3, duration: 0.8 * k, gain: 0.55 });
+    }
   }
   return waitUntil(end);
 }
@@ -73,7 +83,15 @@ function playResolvePrompt(step: Step, slow: boolean, setStatus: (s: string) => 
   playChord(ii, { timbre: 'chord', at: t0, duration: beat * 0.8, gain: 0.8 });
   playNote(tonic + 7 - 24, { timbre: 'bass', at: t0 + beat, duration: beat * 0.8, gain: 0.22 });
   let end = playChord(v, { timbre: 'chord', at: t0 + beat, duration: beat * 0.8, gain: 0.8 });
-  if (slow) end = playNote(tonic, { at: end + 0.2, duration: 0.9 * k, gain: 0.55 });
+  for (const at of [t0, t0 + beat]) {
+    bandCue('bass', at, beat * 0.8, true);
+    bandCue('drums', at, 0.2, true);
+    bandCue('horn', at, beat * 0.8);
+  }
+  if (slow) {
+    bandCue('horn', end + 0.2, 0.9 * k, true);
+    end = playNote(tonic, { at: end + 0.2, duration: 0.9 * k, gain: 0.55 });
+  }
   return waitUntil(end);
 }
 

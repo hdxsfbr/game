@@ -78,3 +78,33 @@ export function burst(scene: Scene, at: Vector3, hex: number, opts: BurstOptions
   ps.targetStopDuration = life + 0.3;
   ps.start();
 }
+
+/**
+ * A spark emitter that stays put and fires on demand: set `manualEmitCount` for a puff. Used over the
+ * band's instruments, one per player, so a note they play is seen as well as heard.
+ */
+export function sparkler(scene: Scene, at: Vector3, hex: number): ParticleSystem {
+  const ps = new ParticleSystem('sparkler', 60, scene);
+  ps.particleTexture = sparkTexture(scene);
+  ps.emitter = at.clone();
+  ps.minEmitBox = new Vector3(-0.08, -0.04, -0.08);
+  ps.maxEmitBox = new Vector3(0.08, 0.04, 0.08);
+  const c = hexToColor3(hex);
+  ps.color1 = new Color4(c.r, c.g, c.b, 1);
+  ps.color2 = new Color4(1, 0.95, 0.75, 1);
+  ps.colorDead = new Color4(c.r, c.g, c.b, 0);
+  ps.minSize = 0.07;
+  ps.maxSize = 0.15;
+  ps.minLifeTime = 0.4;
+  ps.maxLifeTime = 0.8;
+  ps.emitRate = 0;
+  ps.blendMode = ParticleSystem.BLENDMODE_ADD;
+  ps.gravity = new Vector3(0, 0.6, 0);
+  ps.direction1 = new Vector3(-0.4, 0.8, -0.4);
+  ps.direction2 = new Vector3(0.4, 1.4, 0.4);
+  ps.minEmitPower = 0.4;
+  ps.maxEmitPower = 0.9;
+  ps.updateSpeed = 1 / 60;
+  ps.start();
+  return ps;
+}

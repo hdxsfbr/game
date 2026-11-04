@@ -17,6 +17,7 @@ import type { AssetContainer } from '@babylonjs/core/assetContainer';
 import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import '@babylonjs/loaders/glTF';
+import { type BandCue, type BandPart, bandCue, setBandListener } from '../audio/bandBus';
 import { AudioEngine } from '../audio/engine';
 import { MusicPlayer } from '../audio/music';
 import { doorOpen, footstep, gateLocked, panelOpen } from '../audio/sfx';
@@ -35,9 +36,10 @@ import { AREAS, type AreaDef, type DoorDef, type GateDef, type NpcDef, type Prac
 import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
-import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec } from '../world/puzzles';
+import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec, type Step } from '../world/puzzles';
 import { LifeMap, LifePlugin, WaterPlugin, CutawayPlugin, CutawayState } from './colour';
-import { burst } from './fx';
+import { burst, sparkler } from './fx';
+import type { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
 import { Grid } from './grid';
 import { setMoveSpeed } from './Player';
 import { SkyDome } from './sky';
@@ -56,6 +58,12 @@ const CAM_OFFSET = new Vector3(0, 7.6, 9.2);
 const CAM_LOOK = new Vector3(0, 0.7, -1.2);
 /** Height of a stage deck (scripts/blender/build_area.py STAGE_H): people on stage tiles stand this much higher. */
 const STAGE_H = 0.24;
+/** The band: which model plays which part, and where over each one the sparks of a played note rise. */
+const BAND: Record<BandPart, { model: string; at: [number, number, number] }> = {
+  bass: { model: 'bassist', at: [0.12, 1.0, 0.22] },
+  drums: { model: 'drummer', at: [0, 0.75, 0.3] },
+  horn: { model: 'hornplayer', at: [0.05, 1.15, 0.4] },
+};
 // Tiles per second. The 2D game walked at 4.7 and the feet slid badly. The singer now runs when moving
 // (Player.ts measures the clip's stride and picks its rate); 3.4 keeps the areas quick to cross without
 // the feet skating more than the run clip's short steps allow.
@@ -160,7 +168,7 @@ export class World {
   /** A door the camera pushes in on for a moment, and until when. */
   private focus: { x: number; z: number; until: number } | null = null;
   /** People standing about, with the clip they play while their door is sung. */
-  private npcs: Array<{ def: NpcDef; top: TransformNode; baseY: number; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean; sway: number; phase: number }> = [];
+  private npcs: Array<{ def: NpcDef; top: TransformNode; baseY: number; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean; sway: number; phase: number; frozen: boolean; hitAt: number; hitUntil: number; hitStrong: boolean; sparks: ParticleSystem | null }> = [];
   /** Camera-to-player cutaway shared by the wall, tree and prop materials. */
   private cutaway = new CutawayState();
   /** The door whose puzzle is running, for the people who react to it. */
@@ -364,8 +372,9 @@ export class World {
       if (ok) progress.cardsSeen.push(this.area.id);
     }
     saveProgress(progress);
-    MusicPlayer.get().play(this.area.id, progress.finished);
+    this.startMusic();
     MusicPlayer.get().setLife(this.areaLife());
+    setBandListener((c) => this.onBandCue(c));
 
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKey);
@@ -591,7 +600,7 @@ export class World {
   /** Leave the lesson pages without a drill: the music comes back. */
   private closeLesson(): void {
     this.lessonView.hide();
-    if (!this.runner) MusicPlayer.get().setPaused(false);
+    if (!this.runner) this.resumeMusic();
   }
 
   private playDemo(page: LessonPage): void {
@@ -725,6 +734,7 @@ export class World {
     });
     runner.hintOffset = d ? -2 : 1;
     this.runner = runner;
+    if (d?.def.puzzle.id === 'jazz-bandstand' && !d.solved) this.toast('The band picks up their instruments.', 2600);
     MusicPlayer.get().setPaused(true);
     panelOpen();
     this.panel.onSign = (q) => void runner.attemptChoice(q);
@@ -764,11 +774,17 @@ export class World {
       playNote(step.refMidi - 24, { timbre: 'bass', at: t0, duration: 1.4, gain: 0.25 });
       playChord(CHORD_TONES.maj7.map((o) => step.refMidi + o), { timbre: 'chord', at: t0, duration: 1.4, gain: 0.8 });
       playNote(step.refMidi + 12, { timbre: 'bell', at: t0, duration: 1.0, gain: 0.45 });
+      // The band lands the one with the player.
+      bandCue('bass', t0, 1.4, true);
+      bandCue('drums', t0, 0.2, true);
+      bandCue('horn', t0, 1.0, true);
     } else if (step.spec.kind === 'degree') playNote(step.targetMidi, { timbre: 'bell', duration: 0.5, gain: 0.5 });
     else playSequence([step.refMidi, step.targetMidi], { timbre: 'bell', duration: 0.35, gap: 0.18, gain: 0.5 });
     // A multi-tile door (the serpent) sinks one segment per step.
     if (d && d.def.tiles.length > 1 && index < d.tiles.length) for (const m of d.tiles[index]) this.slide(m, m.position.add(new Vector3(0, -0.3, 0)), 400);
-    return this.wait(step.mode === 'melody' ? 250 : step.spec.kind === 'resolve' ? 1500 : 900);
+    const lick = this.area.id === 'jazz' && this.bandAwake() && (step.spec.kind === 'chordTone' || step.spec.kind === 'chordName');
+    if (lick) this.bandLick(step);
+    return this.wait(lick ? 1900 : step.mode === 'melody' ? 250 : step.spec.kind === 'resolve' ? 1500 : 900);
   }
 
   /**
@@ -968,7 +984,10 @@ export class World {
             g.start(true, 1.0);
             g.setWeightForAllAnimatables(g === idle ? 1 : 0);
           }
-          this.npcs.push({ def: e, top, baseY, idle, action, acting: false, sway: 0, phase: Math.random() * 6.28 });
+          const part = (Object.keys(BAND) as BandPart[]).find((k) => BAND[k].model === e.model);
+          const at = part ? BAND[part].at : null;
+          const sparks = at ? sparkler(this.scene, new Vector3(top.position.x + at[0], baseY + at[1], top.position.z + at[2]), this.palette.accent) : null;
+          this.npcs.push({ def: e, top, baseY, idle, action, acting: false, sway: 0, phase: Math.random() * 6.28, frozen: false, hitAt: -1e9, hitUntil: 0, hitStrong: false, sparks });
           this.extrasLog.push(`npc ${e.model} loaded`);
         } catch (err) {
           this.extrasLog.push(`npc ${e.model} failed: ${String(err).slice(0, 120)}`);
@@ -996,20 +1015,48 @@ export class World {
    * People exported without clips (the instrument players, whose instrument is part of the mesh and would
    * not follow retargeted arms) get a whole-body sway instead: a small bounce and lean in time, stronger
    * while their door is sung.
+   *
+   * The Jazz Quarter's band is the exception. Frozen (no sway, clips paused) until the Band Stand is
+   * reached, like the rest of a silent kingdom; awake from then on, and every note they play (a chord
+   * question, the vamp, a lick) lands as a cue: a pop of scale, sparks over the instrument, and for the
+   * trumpeter the playing clip for the length of the note.
    */
   private updateNpcs(dt: number, timeMs: number): void {
     const k = Math.min(1, dt * 5);
+    const now = performance.now();
+    const awake = this.bandAwake();
     for (const n of this.npcs) {
-      const live = !!n.def.door && (n.def.door === this.activeDoor || (progress.finished && n.def.door === 'stage-song'));
+      const band = this.area.id === 'jazz' && this.bandPart(n.def.model) !== null;
+      const frozen = band && !awake;
+      if (frozen !== n.frozen) {
+        n.frozen = frozen;
+        for (const g of [n.idle, n.action]) {
+          if (!g) continue;
+          if (!frozen) g.play(true);
+          else {
+            // Frozen partway into the clip: the first frame is the rig's rest pose, arms out.
+            g.pause();
+            g.goToFrame(g.from + (g.to - g.from) * 0.45);
+          }
+        }
+        if (!frozen && n.sparks) n.sparks.manualEmitCount = 24;
+      }
+      const base = n.def.scale ?? 1.3;
+      const since = (now - n.hitAt) / 1000;
+      const pop = since < 0.6 ? Math.exp(-since * 9) * (n.hitStrong ? 0.1 : 0.05) : 0;
+      n.top.scaling.setAll(base * (1 + pop));
+      if (frozen) continue;
+      const hit = now < n.hitUntil;
+      const live = band ? awake : !!n.def.door && (n.def.door === this.activeDoor || (progress.finished && n.def.door === 'stage-song'));
       if (!n.idle && !n.action) {
         n.sway += ((live ? 1 : 0.25) - n.sway) * Math.min(1, dt * 2);
         const t = timeMs / 1000 * (live ? 3.6 : 1.6) + n.phase;
-        const s = (n.def.scale ?? 1.3) * 0.012 * n.sway;
-        n.top.position.y = n.baseY + Math.abs(Math.sin(t)) * s * 4;
+        const s = base * 0.012 * n.sway;
+        n.top.position.y = n.baseY + Math.abs(Math.sin(t)) * s * 4 + (hit ? 0.03 : 0);
         n.top.rotation.z = Math.sin(t * 0.5) * 0.05 * n.sway;
         continue;
       }
-      const want = !!n.action && live;
+      const want = !!n.action && (band ? hit || now < n.hitUntil + 350 : live);
       if (want === n.acting && !n.action) continue;
       n.acting = want;
       const w = n.action?.animatables[0]?.weight ?? 0;
@@ -1019,6 +1066,58 @@ export class World {
         n.idle?.setWeightForAllAnimatables(1 - (w + (target - w) * k));
       }
     }
+  }
+
+  private bandPart(model: string): BandPart | null {
+    return (Object.keys(BAND) as BandPart[]).find((p) => BAND[p].model === model) ?? null;
+  }
+
+  /** The Jazz Quarter's band wakes when the Band Stand is sung at, and stays awake once it is open. */
+  private bandAwake(): boolean {
+    return progress.solved.includes('jazz-bandstand') || this.activeDoor === 'jazz-bandstand' || this.activeDoor === 'jazz-boss';
+  }
+
+  /** A note is about to sound from one of the band: move that player when it does. */
+  private onBandCue(c: BandCue): void {
+    const n = this.npcs.find((p) => p.def.model === BAND[c.part].model);
+    if (!n || (this.area.id === 'jazz' && !this.bandAwake())) return;
+    this.later(Math.max(0, (c.at - AudioEngine.get().now) * 1000), () => {
+      n.hitAt = performance.now();
+      n.hitUntil = n.hitAt + Math.max(160, c.dur * 1000);
+      n.hitStrong = c.strong;
+      if (n.sparks) n.sparks.manualEmitCount = c.strong ? 18 : 6;
+    });
+  }
+
+  /** After a right answer in the quarter: the horn answers with the chord's five, three, one, over a bass turn. */
+  private bandLick(step: Step): void {
+    const engine = AudioEngine.get();
+    const t0 = engine.now + 0.9;
+    const spec = step.spec;
+    const quality = spec.kind === 'chordTone' || spec.kind === 'chordName' ? spec.quality : 'maj7';
+    const tones = CHORD_TONES[quality];
+    const root = step.refMidi;
+    [tones[2], tones[1], tones[0]].forEach((o, i) => {
+      const dur = i === 2 ? 0.55 : 0.16;
+      playNote(root + 12 + o, { timbre: 'horn', at: t0 + i * 0.18, duration: dur, gain: 0.28 });
+      bandCue('horn', t0 + i * 0.18, dur, i === 2);
+    });
+    playNote(root - 24 + 7, { timbre: 'bass', at: t0, duration: 0.16, gain: 0.22 });
+    playNote(root - 24, { timbre: 'bass', at: t0 + 0.36, duration: 0.6, gain: 0.26 });
+    bandCue('bass', t0, 0.16);
+    bandCue('bass', t0 + 0.36, 0.6, true);
+    bandCue('drums', t0, 0.1);
+    bandCue('drums', t0 + 0.36, 0.1, true);
+  }
+
+  private startMusic(): void {
+    MusicPlayer.get().play(this.area.id, progress.finished, this.area.id === 'jazz' && progress.solved.includes('jazz-bandstand'));
+  }
+
+  /** Music back after a puzzle or lesson; in the quarter it may now be the band's vamp. */
+  private resumeMusic(): void {
+    this.startMusic();
+    MusicPlayer.get().setPaused(false);
   }
 
   /** The moment a door opens: a shower of sparks from the frame, the camera leans in, the singer holds the note, the music swells. */
@@ -1045,7 +1144,7 @@ export class World {
     });
     AudioEngine.get().setDuck(1);
     this.later(solved ? 1800 : 300, () => {
-      if (!this.runner) MusicPlayer.get().setPaused(false);
+      if (!this.runner) this.resumeMusic();
     });
   }
 
@@ -1260,6 +1359,7 @@ export class World {
     this.runner = null;
     this.panel.hide();
     this.bubble.remove();
+    setBandListener(null);
     MusicPlayer.get().stop();
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('keyup', this.onKey);

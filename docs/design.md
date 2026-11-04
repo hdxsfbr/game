@@ -144,6 +144,21 @@ Hint ladder here: miss 1 plays the chord note by note and then the asked note; m
 chord's 1, 3, 5, 7 on the ladder; miss 3 marks the target.
 Progression reward: melody fragment 3 collected.
 
+The band (decided 2026-11-03, after Andre found three idle models on a deck). The band is part of the
+ear-training, not scenery, and follows the kingdom's rule that nothing moves until it is sung to:
+- Frozen, instruments down, until the player stands at the Band Stand door. Then "the band picks up
+  their instruments", and every chord question from there on is theirs: the bass takes the root, the
+  drums the downbeat, the horn the chord; in a replay the horn walks the notes one by one and holds
+  the one that is asked. Each note moves its player (a pop, sparks over the instrument, the trumpet
+  raised for the length of the note), so the chord is something to watch as well as hear.
+- A right answer at the Band Stand or Last Set is answered by a lick: the horn plays the chord's
+  five, three, one over a bass turn. At the Last Set the band lands the one with the player.
+- Once the Band Stand is open, the quarter's background music is the band's vamp: all layers at once,
+  a ride cymbal under them, every note cued to the stage. The street the player brought back sounds
+  like them.
+The cues travel on a small bus (`src/audio/bandBus.ts`) from the sound to the world, timed on the
+audio clock, so the picture and the note land together.
+
 ### Finale: the Silent Stage (about 2 minutes)
 Built 2026-11-01. Entered from the hub's south gate once all three fragments are held. One door,
 The Song: a fifteen-note tune in C (1 3 5 8 / 6 5 3 2 / 1 3 5 6 / 5 2 1) in melody mode. The

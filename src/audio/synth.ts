@@ -1,7 +1,7 @@
 import { midiToHz } from '../ear/pitchMath';
 import { AudioEngine } from './engine';
 
-export type Timbre = 'pipe' | 'bell' | 'pad' | 'bass' | 'horn' | 'chord';
+export type Timbre = 'pipe' | 'bell' | 'pad' | 'bass' | 'horn' | 'chord' | 'hat';
 
 export interface NoteOptions {
   timbre?: Timbre;
@@ -22,7 +22,7 @@ interface Envelope {
   release: number;
 }
 
-const TIMBRES: Record<Timbre, { wave: OscillatorType; env: Envelope; cutoff: number; detune: number[]; breath: number; level?: number }> = {
+const TIMBRES: Record<Exclude<Timbre, 'hat'>, { wave: OscillatorType; env: Envelope; cutoff: number; detune: number[]; breath: number; level?: number }> = {
   pipe: { wave: 'triangle', env: { attack: 0.03, decay: 0.1, sustain: 0.8, release: 0.15 }, cutoff: 2200, detune: [0], breath: 0.05 },
   bell: { wave: 'sine', env: { attack: 0.005, decay: 0.4, sustain: 0.25, release: 0.6 }, cutoff: 6000, detune: [0, 1201], breath: 0 },
   pad: { wave: 'sawtooth', env: { attack: 0.25, decay: 0.3, sustain: 0.7, release: 0.5 }, cutoff: 1200, detune: [-7, 0, 7], breath: 0 },
@@ -45,8 +45,30 @@ function getNoise(ctx: AudioContext): AudioBuffer {
   return noiseBuffer;
 }
 
+/** A ride cymbal tick: a short burst of high noise. The pitch is ignored. */
+function playHat(opts: NoteOptions): number {
+  const engine = AudioEngine.get();
+  const { ctx } = engine;
+  const t0 = opts.at ?? ctx.currentTime;
+  const dur = Math.min(opts.duration ?? 0.09, 0.3);
+  const src = ctx.createBufferSource();
+  src.buffer = getNoise(ctx);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 6500;
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(0, t0);
+  amp.gain.linearRampToValueAtTime(opts.gain ?? 0.2, t0 + 0.004);
+  amp.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  src.connect(hp).connect(amp).connect(opts.out ?? engine.master);
+  src.start(t0);
+  src.stop(t0 + dur + 0.02);
+  return t0 + dur;
+}
+
 /** Play one note. Returns the time (AudioContext seconds) at which the note fully ends. */
 export function playNote(midi: number, opts: NoteOptions = {}): number {
+  if (opts.timbre === 'hat') return playHat(opts);
   const engine = AudioEngine.get();
   const { ctx } = engine;
   const timbre = TIMBRES[opts.timbre ?? 'pipe'];
