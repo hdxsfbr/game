@@ -92,9 +92,10 @@ use, so they come last.
 ## Done so far (2026-11-03 evening)
 - Singer: run preset added and exported with all four clips (`singer.glb`, 7.5 MB). The game runs it at
   1.56x (five steps a second) and walks at 3.4 tiles a second.
-- Band: bassist, drummer, trumpeter generated, retopologised, exported without clips. Lesson learned:
-  an instrument modelled into the character cannot take Tripo's motions (the arms retarget away from
-  it), so these three sway as a whole in the game. Credits left: about 2685.
+- Band: bassist, drummer, trumpeter generated and retopologised. The bassist and drummer are exported
+  without clips: an instrument modelled into the character cannot take Tripo's motions (the arms
+  retarget away from it), so they sway as a whole in the game. The trumpet follows the hand, so the
+  trumpeter is rigged with a playing motion and the idle preset. Credits left: about 2645.
 - Transfer: exports download to the Mac; one `scp ~/Downloads/<names>*.glb hdx-lab:.../scratch/tripo/`
   per batch brings them over, and `scripts/assets-index.mjs` registers them.
 
