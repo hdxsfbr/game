@@ -1,4 +1,5 @@
 import { AudioEngine } from './engine';
+import { bandCue } from './bandBus';
 import { playNote, type Timbre } from './synth';
 
 /**
@@ -24,6 +25,8 @@ interface Track {
   tempo: number;
   steps: number;
   events: Ev[];
+  /** The band in the world plays this: every event is cued to them (see bandBus). */
+  band?: boolean;
 }
 
 const LAYER_LIFE = [0, 0.34, 0.74];
@@ -80,8 +83,12 @@ function townTrack(): Track {
   return { tempo: 100, steps: 32, events: ev };
 }
 
-/** ii V I I with a walking bass, comping on the off-beats, a horn riff once the colour is back. */
-function jazzTrack(): Track {
+/**
+ * ii V I I with a walking bass, comping on the off-beats, a horn riff once the colour is back.
+ * With `band`, once the Band Stand is open: the whole thing at once whatever the colour, a ride
+ * cymbal under it, and every note cued to the players on the stage.
+ */
+function jazzTrack(band: boolean): Track {
   const ev: Ev[] = [];
   const chords = [
     [62, 65, 69, 72], // Dm7
@@ -104,7 +111,11 @@ function jazzTrack(): Track {
     [1, 72], [3, 74], [4, 77], [10, 76], [12, 74], [19, 71], [22, 72], [27, 76], [29, 74], [30, 72],
   ];
   riff.forEach(([s, m]) => ev.push(one(s, m, 'horn', 0.4, 0.09, 2)));
-  return { tempo: 118, steps: 32, events: ev };
+  if (!band) return { tempo: 118, steps: 32, events: ev };
+  for (const e of ev) e.layer = 0;
+  // Ride: ding, ding-da-ding, with the weight on one and three.
+  for (let bar = 0; bar < 4; bar++) for (const st of [0, 2, 3, 4, 6, 7]) ev.push(one(bar * 8 + st, 0, 'hat', st % 4 === 0 ? 0.12 : 0.07, st % 4 === 0 ? 0.11 : 0.06, 0));
+  return { tempo: 118, steps: 32, events: ev, band: true };
 }
 
 /** Silence, then the song itself once it has been sung. */
@@ -150,13 +161,19 @@ export class MusicPlayer {
   private nextTime = 0;
   private life = 0;
   private paused = false;
+  /** A short lift in level after a door opens; eases back by itself. */
+  private boost = 1;
+  private boostTimer: number | null = null;
 
-  /** Start (or switch to) the music for an area. Restarts from the top only when the track changes. */
-  play(areaId: string, finished = false): void {
-    const id = `${areaId}:${finished ? 'song' : 'quiet'}`;
+  /**
+   * Start (or switch to) the music for an area. Restarts from the top only when the track changes.
+   * `band`: the Jazz Quarter's band is on stage and the vamp is theirs.
+   */
+  play(areaId: string, finished = false, band = false): void {
+    const id = `${areaId}:${finished ? 'song' : 'quiet'}${band ? ':band' : ''}`;
     if (id === this.trackId && this.timer !== null) return;
     this.trackId = id;
-    this.track = areaId === 'hub' ? hubTrack() : areaId === 'valley' ? valleyTrack() : areaId === 'town' ? townTrack() : areaId === 'jazz' ? jazzTrack() : stageTrack(finished);
+    this.track = areaId === 'hub' ? hubTrack() : areaId === 'valley' ? valleyTrack() : areaId === 'town' ? townTrack() : areaId === 'jazz' ? jazzTrack(band) : stageTrack(finished);
     const engine = AudioEngine.get();
     this.nextStep = 0;
     this.nextTime = engine.now + 0.15;
@@ -187,10 +204,22 @@ export class MusicPlayer {
     this.applyGain();
   }
 
+  /** Swell for a few seconds, then settle back. Called when a door opens, after the music returns. */
+  swell(amount = 1.5, ms = 3000): void {
+    this.boost = amount;
+    this.applyGain();
+    if (this.boostTimer !== null) window.clearTimeout(this.boostTimer);
+    this.boostTimer = window.setTimeout(() => {
+      this.boost = 1;
+      this.boostTimer = null;
+      this.applyGain();
+    }, ms);
+  }
+
   private applyGain(): void {
     const engine = AudioEngine.get();
-    const target = this.paused || !this.track ? 0 : 0.55 + 0.45 * this.life;
-    engine.music.gain.setTargetAtTime(target, engine.now, this.paused ? 0.15 : 0.6);
+    const target = this.paused || !this.track ? 0 : (0.55 + 0.45 * this.life) * this.boost;
+    engine.music.gain.setTargetAtTime(target, engine.now, this.paused ? 0.15 : this.boost > 1 ? 0.3 : 0.9);
   }
 
   private tick(): void {
@@ -207,6 +236,10 @@ export class MusicPlayer {
           if (ev.s !== step) continue;
           if (this.life < LAYER_LIFE[ev.layer]) continue;
           playNote(ev.midi, { timbre: ev.timbre, at: this.nextTime, duration: ev.dur, gain: ev.gain, out: engine.music });
+          if (t.band) {
+            const part = ev.timbre === 'bass' ? 'bass' : ev.timbre === 'hat' ? 'drums' : ev.timbre === 'horn' ? 'horn' : null;
+            if (part) bandCue(part, this.nextTime, ev.dur, step % 8 === 0 || (part === 'horn' && ev.dur > 0.3));
+          }
         }
       }
       this.nextStep++;

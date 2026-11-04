@@ -11,7 +11,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "phaser": "^4.2.1",
+    "@babylonjs/core": "^8.56.2",
+    "@babylonjs/loaders": "^8.56.2",
     "pitchy": "^4.1.0"
   },
   "devDependencies": {

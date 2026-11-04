@@ -1,7 +1,7 @@
 import { midiToHz } from '../ear/pitchMath';
 import { AudioEngine } from './engine';
 
-export type Timbre = 'pipe' | 'bell' | 'pad' | 'bass' | 'horn';
+export type Timbre = 'pipe' | 'bell' | 'pad' | 'bass' | 'horn' | 'chord' | 'hat';
 
 export interface NoteOptions {
   timbre?: Timbre;
@@ -22,12 +22,17 @@ interface Envelope {
   release: number;
 }
 
-const TIMBRES: Record<Timbre, { wave: OscillatorType; env: Envelope; cutoff: number; detune: number[]; breath: number }> = {
+const TIMBRES: Record<Exclude<Timbre, 'hat'>, { wave: OscillatorType; env: Envelope; cutoff: number; detune: number[]; breath: number; level?: number }> = {
   pipe: { wave: 'triangle', env: { attack: 0.03, decay: 0.1, sustain: 0.8, release: 0.15 }, cutoff: 2200, detune: [0], breath: 0.05 },
   bell: { wave: 'sine', env: { attack: 0.005, decay: 0.4, sustain: 0.25, release: 0.6 }, cutoff: 6000, detune: [0, 1201], breath: 0 },
   pad: { wave: 'sawtooth', env: { attack: 0.25, decay: 0.3, sustain: 0.7, release: 0.5 }, cutoff: 1200, detune: [-7, 0, 7], breath: 0 },
   bass: { wave: 'square', env: { attack: 0.01, decay: 0.15, sustain: 0.5, release: 0.2 }, cutoff: 500, detune: [0], breath: 0 },
   horn: { wave: 'sawtooth', env: { attack: 0.06, decay: 0.2, sustain: 0.6, release: 0.3 }, cutoff: 2600, detune: [-4, 4], breath: 0.02 },
+  // Block chords: one clean voice per note, a quick attack and a short tail, so stacked notes stay
+  // separate and one chord has stopped before the next begins. The pad's detuned saws beat against
+  // each other and ring for half a second, which blurred chord after chord into one.
+  // level: a clean triangle loses little to the filter, so four of them at the pad's gains would clip.
+  chord: { wave: 'triangle', env: { attack: 0.03, decay: 0.35, sustain: 0.55, release: 0.12 }, cutoff: 3600, detune: [0], breath: 0, level: 0.45 },
 };
 
 let noiseBuffer: AudioBuffer | null = null;
@@ -40,13 +45,35 @@ function getNoise(ctx: AudioContext): AudioBuffer {
   return noiseBuffer;
 }
 
+/** A ride cymbal tick: a short burst of high noise. The pitch is ignored. */
+function playHat(opts: NoteOptions): number {
+  const engine = AudioEngine.get();
+  const { ctx } = engine;
+  const t0 = opts.at ?? ctx.currentTime;
+  const dur = Math.min(opts.duration ?? 0.09, 0.3);
+  const src = ctx.createBufferSource();
+  src.buffer = getNoise(ctx);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 6500;
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(0, t0);
+  amp.gain.linearRampToValueAtTime(opts.gain ?? 0.2, t0 + 0.004);
+  amp.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  src.connect(hp).connect(amp).connect(opts.out ?? engine.master);
+  src.start(t0);
+  src.stop(t0 + dur + 0.02);
+  return t0 + dur;
+}
+
 /** Play one note. Returns the time (AudioContext seconds) at which the note fully ends. */
 export function playNote(midi: number, opts: NoteOptions = {}): number {
+  if (opts.timbre === 'hat') return playHat(opts);
   const engine = AudioEngine.get();
   const { ctx } = engine;
   const timbre = TIMBRES[opts.timbre ?? 'pipe'];
   const duration = opts.duration ?? 1;
-  const peak = opts.gain ?? 0.6;
+  const peak = (opts.gain ?? 0.6) * (timbre.level ?? 1);
   const t0 = opts.at ?? ctx.currentTime;
   const { attack, decay, sustain, release } = timbre.env;
   const hz = midiToHz(midi);
@@ -117,22 +144,29 @@ export function playSequence(midis: number[], opts: NoteOptions & { gap?: number
   return end;
 }
 
-/** I, IV, V, I in the key of `tonicMidi`, as a soft pad. Returns the end time. */
+/**
+ * I, IV, V, I in the key of `tonicMidi`, as block chords. Returns the end time.
+ * Voiced in close position around the tonic itself (the IV and V in inversion), with a quiet bass an
+ * octave below each root: an octave lower the whole cadence sounded muddy and the tonic was hard to pick out.
+ */
 export function playCadence(tonicMidi: number, opts: { at?: number; gain?: number; speed?: number } = {}): number {
   const engine = AudioEngine.get();
   const k = opts.speed ?? 1;
   const beat = 0.55 * k;
   const t0 = opts.at ?? engine.now;
-  const gain = opts.gain ?? 0.5;
-  const chords = [
-    [0, 4, 7], // I
-    [5, 9, 12], // IV
-    [7, 11, 14], // V
-    [0, 4, 7], // I
+  // Loud enough to sit beside the prompt notes (0.55 each): the chord voice is scaled down and spread
+  // over three notes, so the cadence needs a higher figure to come out at the same level.
+  const gain = opts.gain ?? 0.8;
+  const chords: Array<{ notes: number[]; root: number }> = [
+    { notes: [0, 4, 7], root: 0 }, // I
+    { notes: [0, 5, 9], root: 5 }, // IV, second inversion
+    { notes: [-1, 2, 7], root: 7 }, // V, first inversion
+    { notes: [0, 4, 7], root: 0 }, // I
   ];
   let end = t0;
   chords.forEach((c, i) => {
-    end = playChord(c.map((n) => tonicMidi + n - 12), { timbre: 'pad', at: t0 + i * beat, duration: beat * 0.9, gain });
+    playNote(tonicMidi + c.root - 24, { timbre: 'bass', at: t0 + i * beat, duration: beat * 0.7, gain: gain * 0.4 });
+    end = playChord(c.notes.map((n) => tonicMidi + n), { timbre: 'chord', at: t0 + i * beat, duration: beat * 0.72, gain });
   });
   return end;
 }

@@ -14,7 +14,7 @@ export interface Demo {
   cadence?: boolean;
   /** Seconds per beat of a tune, or between chords. Default 0.42. */
   gap?: number;
-  timbre?: 'pipe' | 'bell' | 'pad' | 'bass' | 'horn';
+  timbre?: 'pipe' | 'bell' | 'pad' | 'bass' | 'horn' | 'chord';
 }
 
 export interface LessonPage {
@@ -102,7 +102,7 @@ export const LESSONS: Record<string, LessonDef> = {
         heading: 'The fourth',
         text: 'One step short of the fifth, and it sounds like an arrival. Here Comes the Bride rises a fourth on "Here comes". Amazing Grace opens with the same leap. The Fourth Gate wants it.',
         demoLabel: 'Here Comes the Bride',
-        demo: { notes: [0, 5, 5, 5], beats: [1, 1.5, 0.5, 2], gap: 0.5 },
+        demo: { notes: [0, 5, 5, 5, 0, 7, 4, 5], beats: [1, 1.5, 0.5, 2, 1, 1.5, 0.5, 2], gap: 0.5 },
       },
       {
         heading: 'The major third',
@@ -183,7 +183,7 @@ export const LESSONS: Record<string, LessonDef> = {
     pages: [
       {
         heading: 'Four moods',
-        text: 'A chord is notes stacked up and played together. Four kinds live in the quarter, and each has a mood. Learn the moods first and the names follow.',
+        text: 'A chord is notes stacked up and played together. Four kinds live in the quarter, and each has a mood. The first door asks you to name them; the ones after ask you to sing their notes.',
         demoLabel: 'all four, in a row',
         demo: { chords: [[0, 4, 7, 11], [0, 3, 7, 10], [0, 4, 7, 10], [0, 3, 6, 10]], gap: 1.1 },
       },

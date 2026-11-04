@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Drive the game in headless Chrome through real doors, with keys as the input.
+// Drive the 3D game in headless Chrome through real doors, with keys as the input.
 // Usage: node scripts/playthrough.mjs [baseUrl] [outDir]
 // Writes screenshots to outDir and exits non-zero on console errors or a door that will not open.
 import puppeteer from 'puppeteer-core';
@@ -14,13 +14,20 @@ const chrome = execSync('command -v google-chrome || command -v chromium || comm
 const browser = await puppeteer.launch({
   executablePath: chrome,
   headless: 'new',
-  args: ['--ignore-certificate-errors', '--autoplay-policy=no-user-gesture-required', '--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720'],
+  args: ['--ignore-certificate-errors', '--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720'],
   defaultViewport: { width: 1280, height: 720 },
 });
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error' && !/GL Driver/.test(m.text())) errors.push(m.text()); });
+// A navigation aborts the previous page's pending loads; those failures are not the game's.
+let navigatedAt = 0;
+page.on('console', (m) => {
+  if (m.type() !== 'error' || /GL Driver|WebGL|ERR_CERT/.test(m.text())) return;
+  if (/Failed to load resource/.test(m.text()) && Date.now() - navigatedAt < 2500) return;
+  errors.push(m.text());
+});
+page.on('framenavigated', () => { navigatedAt = Date.now(); });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const shot = (name) => page.screenshot({ path: `${out}/${name}.png` });
@@ -37,6 +44,7 @@ async function state() {
     const r = w.runner;
     return {
       area: w.area.id,
+      ready: !!w.ready,
       phase: r ? r.phase : null,
       stepIndex: r ? r.stepIndex : null,
       stepCount: r ? r.stepCount : null,
@@ -77,39 +85,19 @@ async function answer(s, semis, quality) {
 
 /** Click the panel's Answer button, as a mouse player would. */
 async function clickAnswer() {
-  const r = await page.evaluate(() => {
-    const w = window.__lk;
-    const b = w.panel.answerBtn;
-    const c = document.querySelector('canvas').getBoundingClientRect();
-    return { x: c.left + (b.x + b.width / 2) * (c.width / 960), y: c.top + (w.panel.container.y + b.y + b.height / 2) * (c.height / 540) };
-  });
-  await page.mouse.click(r.x, r.y);
+  await page.click('#puzzle-answer');
 }
 
 /** Click the piano key for `midi` on the panel, as a player with a mouse would. */
 async function clickKey(midi) {
-  const r = await page.evaluate((m) => {
-    const w = window.__lk;
-    const k = w.panel.keyRects.find((k) => k.midi === m);
-    if (!k) return null;
-    const c = document.querySelector('canvas').getBoundingClientRect();
-    const sx = c.width / 960;
-    const sy = c.height / 540;
-    return { x: c.left + (k.x + k.w / 2) * sx, y: c.top + (w.panel.container.y + k.y + k.h - 8) * sy };
-  }, midi);
-  if (!r) throw new Error('no key for midi ' + midi);
-  await page.mouse.click(r.x, r.y);
+  const el = await page.$(`[data-key="${midi}"]`);
+  if (!el) throw new Error('no key for midi ' + midi);
+  await el.click();
 }
 
 /** Click the band stand sign for a chord quality. */
 async function clickSign(quality) {
-  const r = await page.evaluate((q) => {
-    const w = window.__lk;
-    const z = w.panel.signs[['maj7', 'min7', 'dom7', 'm7b5'].indexOf(q)];
-    const c = document.querySelector('canvas').getBoundingClientRect();
-    return { x: c.left + (z.x + z.width / 2) * (c.width / 960), y: c.top + (w.panel.container.y + z.y + z.height / 2) * (c.height / 540) };
-  }, quality);
-  await page.mouse.click(r.x, r.y);
+  await page.click(`[data-sign="${quality}"]`);
 }
 
 /** Voice left, from saved progress. */
@@ -177,7 +165,8 @@ async function solveDoor(id, { wrong = 0, shotName = null, click = false } = {})
     const alt = s.kind === 'degree' ? MAJOR[(MAJOR.indexOf(semis) + 2 + w) % 7] : (semis + 3 + w) % 8;
     const altQ = QUALITIES[(QUALITIES.indexOf(s.quality) + 1 + w) % 4];
     await answer(s, alt, altQ);
-    s = await waitFor((st) => st.misses === w + 1 && st.phase === 'listening', 15000, `${id} miss ${w + 1}`);
+    // A miss at a melody door replays the whole tune, up to twelve seconds for the song.
+    s = await waitFor((st) => st.misses === w + 1 && st.phase === 'listening', 25000, `${id} miss ${w + 1}`);
     if (shotName) await shot(`${shotName}-miss${w + 1}`);
   }
   for (let presses = 0; presses < 24; presses++) {
@@ -197,16 +186,17 @@ async function solveDoor(id, { wrong = 0, shotName = null, click = false } = {})
   }
   s = await waitFor((st) => st.solved.includes(id), 15000, `${id} solved`);
   console.log('solved', id);
+  // The moment after: sparks and the camera's push toward the door.
+  if (shotName) { await sleep(550); await shot(`${shotName}-open`); }
   return s;
 }
 
 async function jump(area, x, y) {
   await page.goto(`${base}/?scene=world&area=${area}&x=${x}&y=${y}`, { waitUntil: 'load' });
-  // The title screen comes first: click Play (the right-hand button) to enter the world with the keys.
-  await sleep(600);
-  const r = await page.evaluate(() => { const c = document.querySelector('canvas').getBoundingClientRect(); return { x: c.left, y: c.top, w: c.width, h: c.height }; });
-  await page.mouse.click(r.x + (r.w * 650) / 960, r.y + (r.h * 290) / 540);
-  await waitFor((st) => st.area === area, 8000, 'area ' + area);
+  // The title screen comes first: Play enters the world with the keys.
+  await page.waitForSelector('#btn-play', { timeout: 10000 });
+  await page.click('#btn-play');
+  await waitFor((st) => st.area === area && st.ready, 30000, 'area ' + area);
   await sleep(400);
   await dismissCard();
 }
@@ -220,6 +210,7 @@ async function dismissCard() {
 }
 
 await page.goto(`${base}/?reset=1`, { waitUntil: 'load' });
+await sleep(500);
 
 // Hub: the hearth door, with three misses to show the ladder.
 await jump('hub', 8, 8);
@@ -308,7 +299,8 @@ await shot('19-stage');
 await solveDoor('stage-song', { wrong: 1, shotName: '20-song' });
 await sleep(2500);
 await shot('21-kingdom');
-for (let i = 0; i < 60; i++) { if (await page.evaluate(() => window.__lkResults === true)) break; await sleep(250); }
+// The finale runs about sixteen seconds from the last note: lights, fireworks, then the results.
+for (let i = 0; i < 100; i++) { if (await page.evaluate(() => window.__lkResults === true)) break; await sleep(250); }
 if (!(await page.evaluate(() => window.__lkResults === true))) throw new Error('results screen never appeared');
 await sleep(900);
 await shot('22-results');

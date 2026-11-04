@@ -7,8 +7,10 @@ import { intervalById } from '../ear/pitchMath';
 export type StepSpec =
   | { kind: 'interval'; intervalId: string }
   | { kind: 'degree'; degree: number }
-  | { kind: 'chordTone'; quality: ChordQuality; tone: 3 | 5 | 7 }
+  | { kind: 'chordTone'; quality: ChordQuality; tone: 1 | 3 | 5 | 7 }
   | { kind: 'chordName'; quality: ChordQuality }
+  /** The chord sung one note at a time, root to seventh: expands to four chordTone steps on one root. */
+  | { kind: 'arpeggio'; quality: ChordQuality }
   /** The band plays ii and V; the player supplies the I (the tonic). */
   | { kind: 'resolve' };
 
@@ -117,6 +119,7 @@ export function makeQuestion(spec: PuzzleSpec, rng: Rng = Math.random, weights: 
       last = quality;
     }
   }
+  specs = specs.flatMap((s) => (s.kind === 'arpeggio' ? TONES.map((tone) => ({ kind: 'chordTone', quality: s.quality, tone }) as StepSpec) : [s]));
   const steps: Step[] = [];
   for (const s of specs) {
     const refMidi = spec.sharedRef ? sharedRef : pick();
@@ -132,11 +135,12 @@ export function makeQuestion(spec: PuzzleSpec, rng: Rng = Math.random, weights: 
         step = { ...base, targetMidi: refMidi + MAJOR_SCALE[s.degree - 1], label: DEGREE_NAMES[s.degree - 1] };
         break;
       case 'chordTone': {
-        const tones = CHORD_TONES[s.quality];
-        const offset = s.tone === 3 ? tones[1] : s.tone === 5 ? tones[2] : tones[3];
-        step = { ...base, targetMidi: refMidi + offset, label: `${CHORD_NAMES[s.quality]}, the ${s.tone === 3 ? 'third' : s.tone === 5 ? 'fifth' : 'seventh'}` };
+        const offset = CHORD_TONES[s.quality][TONES.indexOf(s.tone)];
+        step = { ...base, targetMidi: refMidi + offset, label: `the ${TONE_NAMES[s.tone]} of a ${CHORD_NAMES[s.quality].toLowerCase()}` };
         break;
       }
+      case 'arpeggio':
+        throw new Error('arpeggio steps are expanded before this point');
       case 'chordName':
         step = { ...base, targetMidi: refMidi, label: CHORD_NAMES[s.quality] };
         break;
@@ -150,6 +154,9 @@ export function makeQuestion(spec: PuzzleSpec, rng: Rng = Math.random, weights: 
   }
   return { spec, steps };
 }
+
+export const TONES = [1, 3, 5, 7] as const;
+export const TONE_NAMES: Record<1 | 3 | 5 | 7, string> = { 1: 'root', 3: 'third', 5: 'fifth', 7: 'seventh' };
 
 export const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11, 12];
 export const DEGREE_NAMES = ['degree 1, do', 'degree 2, re', 'degree 3, mi', 'degree 4, fa', 'degree 5, sol', 'degree 6, la', 'degree 7, ti', 'degree 8, do again'];

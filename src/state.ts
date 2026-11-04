@@ -23,6 +23,10 @@ export interface Progress {
   quiets: number;
   /** Areas whose story card has been shown. */
   cardsSeen: string[];
+  /** Practice benches whose drill has been completed at least once. */
+  drilled: string[];
+  /** Stars per opened door, 0..3: three for first-try answers, fewer for each miss before the answer. */
+  scores: Record<string, number>;
 }
 
 export const VOICE_MAX = 5;
@@ -34,7 +38,7 @@ export const VOICE_DRILL_CAP = 3;
 const KEY = 'listening-kingdom.progress.v1';
 
 export function defaultProgress(): Progress {
-  return { inputMode: 'play', solved: [], misses: {}, fragments: 0, area: 'hub', x: 0, y: 0, areaMisses: {}, finished: false, voice: VOICE_MAX, quiets: 0, cardsSeen: [] };
+  return { inputMode: 'play', solved: [], misses: {}, fragments: 0, area: 'hub', x: 0, y: 0, areaMisses: {}, finished: false, voice: VOICE_MAX, quiets: 0, cardsSeen: [], drilled: [], scores: {} };
 }
 
 export function loadProgress(): Progress {
