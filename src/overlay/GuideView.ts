@@ -1,5 +1,6 @@
 import { playDemo } from '../audio/demo';
 import { AudioEngine } from '../audio/engine';
+import { preloadNarration, speak, type Speech } from '../audio/narration';
 import { KEY_LABELS, PIANO_HIGH, PIANO_LOW } from '../ear/pipes';
 import { noteName } from '../ear/pitchMath';
 import type { GuideStep } from '../world/guides';
@@ -26,7 +27,7 @@ export class GuideView {
   private backBtn: HTMLButtonElement;
   private steps: GuideStep[] = [];
   private bench = '';
-  private audio: HTMLAudioElement | null = null;
+  private speech: Speech | null = null;
   private timers: number[] = [];
   /** Counts up on every change of step, so a late sound or light from the last one is dropped. */
   private run = 0;
@@ -76,6 +77,7 @@ export class GuideView {
   show(bench: string, title: string, steps: GuideStep[]): void {
     this.bench = bench;
     this.steps = steps;
+    preloadNarration(bench, steps.length);
     this.titleEl.textContent = title;
     this.root.classList.remove('hidden');
     this.play(0);
@@ -121,23 +123,21 @@ export class GuideView {
       });
       this.timers.push(window.setTimeout(next, Math.max(0, (end - engine.now) * 1000) + 400));
     };
-    const a = new Audio(`narration/${this.bench}-${i}.mp3`);
-    this.audio = a;
-    a.onended = () => this.timers.push(window.setTimeout(demo, 350));
-    // A clip that will not load or play (no file, no gesture yet) should not stall the guide.
-    a.onerror = () => demo();
-    void AudioEngine.get().unlock();
-    a.play().catch(() => demo());
+    const sp = speak(this.bench, i);
+    this.speech = sp;
+    void sp.done.then(() => {
+      if (run !== this.run || this.speech !== sp) return;
+      this.timers.push(window.setTimeout(demo, 350));
+    });
   }
 
   private stop(): void {
     for (const t of this.timers) window.clearTimeout(t);
     this.timers = [];
-    if (this.audio) {
-      this.audio.onended = null;
-      this.audio.onerror = null;
-      this.audio.pause();
-      this.audio = null;
+    if (this.speech) {
+      const sp = this.speech;
+      this.speech = null;
+      sp.stop();
     }
     for (const k of this.keyEls.values()) k.classList.remove('held');
   }
