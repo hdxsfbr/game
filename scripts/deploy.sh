@@ -19,6 +19,7 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 git ls-files -z | xargs -0 -I{} cp --parents {} "$STAGE"/
 ID=$(cd "$STAGE" && railway up --project "$PROJECT" --environment production --service "$SERVICE" --detach < /dev/null | sed -n 's/.*id=\([0-9a-f-]*\).*/\1/p')
+[[ -n "$ID" ]] || { echo "upload failed: no deployment id" >&2; exit 1; }
 echo "deployment $ID"
 for _ in $(seq 1 60); do
   STATUS=$(railway deployment list --service "$SERVICE" | grep "$ID" | awk -F'|' '{gsub(/ /,"",$2); print $2}')
