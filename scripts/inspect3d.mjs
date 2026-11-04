@@ -20,12 +20,16 @@ const query = qi > 0 ? '&' + process.argv[qi + 1] : '';
 // --dpr 2 renders at a device pixel ratio of 2, as a retina display would.
 const di = process.argv.indexOf('--dpr');
 const dpr = di > 0 ? Number(process.argv[di + 1]) : 1;
+// --size 1024x768 renders at that viewport (an iPad, a phone); --touch emulates a touch screen.
+const si = process.argv.indexOf('--size');
+const [vw, vh] = si > 0 ? process.argv[si + 1].split('x').map(Number) : [1280, 720];
+const touch = process.argv.includes('--touch');
 const chrome = execSync('command -v google-chrome || command -v chromium || command -v chromium-browser').toString().trim();
 const browser = await puppeteer.launch({
   executablePath: chrome,
   headless: 'new',
-  args: ['--ignore-certificate-errors', '--autoplay-policy=no-user-gesture-required', '--window-size=1280,720', ...(gpu ? ['--use-gl=angle', `--use-angle=${gpu}`, '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--enable-features=Vulkan', '--disable-gpu-vsync', '--disable-frame-rate-limit'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'])],
-  defaultViewport: { width: 1280, height: 720, deviceScaleFactor: dpr },
+  args: ['--ignore-certificate-errors', '--autoplay-policy=no-user-gesture-required', `--window-size=${vw},${vh}`, ...(gpu ? ['--use-gl=angle', `--use-angle=${gpu}`, '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--enable-features=Vulkan', '--disable-gpu-vsync', '--disable-frame-rate-limit'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'])],
+  defaultViewport: { width: vw, height: vh, deviceScaleFactor: dpr, hasTouch: touch },
 });
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('pageerror', String(e)));
@@ -61,7 +65,7 @@ const info = await page.evaluate(() => {
 if (!quiet) console.log(JSON.stringify(info, null, 1));
 for (let i = 4; i < process.argv.length; i++) {
   const a = process.argv[i];
-  if (a === '--query' || a === '--progress' || a === '--dpr') i++;
+  if (a === '--query' || a === '--progress' || a === '--dpr' || a === '--size') i++;
   else if (a === '--gpu') { if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) i++; }
   else if (a === '--eval') {
     const r = await page.evaluate((js) => { const w = window.__lk; return JSON.stringify(new Function('w', js)(w)); }, process.argv[++i]);

@@ -5,6 +5,7 @@ import type { PuzzleRunner } from '../world/puzzleRunner';
 import type { Palette } from '../world/palette';
 import { colorToCss } from '../world/palette';
 import { clear, el } from './dom';
+import { TOUCH, keyed } from './touch';
 
 const BLACK = new Set([1, 3, 6, 8, 10]);
 const SVG = 'http://www.w3.org/2000/svg';
@@ -50,6 +51,9 @@ export class PuzzlePanel {
   onSign: ((quality: ChordQuality) => void) | null = null;
   onKey: ((midi: number) => void) | null = null;
   onAnswer: (() => void) | null = null;
+  onReplay: (() => void) | null = null;
+  onLeave: (() => void) | null = null;
+  private choiceHint: HTMLElement;
 
   constructor(ui: HTMLDivElement, private palette: Palette) {
     this.root = el('div', 'panel hidden');
@@ -79,7 +83,13 @@ export class PuzzlePanel {
 
     this.dotsEl = el('div', 'panel-dots');
     this.keysEl = el('div', 'panel-keys', '');
-    this.root.append(left, right, this.dotsEl, this.keysEl);
+    this.choiceHint = el('span', '', '');
+    const replay = el('button', 'btn-text', keyed('Space', 'hear it again'), { type: 'button', id: 'puzzle-replay' });
+    replay.addEventListener('click', () => this.onReplay?.());
+    const leave = el('button', 'btn-text', keyed('Esc', 'step away'), { type: 'button', id: 'puzzle-leave' });
+    leave.addEventListener('click', () => this.onLeave?.());
+    this.keysEl.append(this.choiceHint, replay, leave);
+    this.root.append(left, right, this.dotsEl, this.keysEl, el('p', 'panel-rotate', 'Turn your phone sideways for bigger keys.'));
     ui.appendChild(this.root);
   }
 
@@ -92,7 +102,7 @@ export class PuzzlePanel {
       const b = el('button', 'key ' + (black ? 'black' : 'white'), '', { type: 'button', 'data-key': String(m) });
       b.style.left = `${black ? wx - bw / 2 : wx}px`;
       b.append(el('span', 'key-name', noteName(m).replace(/-?\d+$/, '')), el('span', 'key-label', keyLabelForMidi(m)));
-      b.addEventListener('mousedown', (e) => {
+      b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         this.onKey?.(m);
       });
@@ -135,7 +145,7 @@ export class PuzzlePanel {
   private layoutFor(r: PuzzleRunner): void {
     const choice = r.isChoice;
     this.choiceMode = choice;
-    this.keysEl.textContent = choice ? 'Click a sign or press 1 to 4  ·  Space: hear it again  ·  Esc: step away' : 'Space: hear it again  ·  Esc: step away';
+    this.choiceHint.textContent = choice ? (TOUCH ? 'Tap a sign' : 'Click a sign or press 1 to 4') : '';
     this.signsEl.classList.toggle('hidden', !choice);
     this.pianoEl.classList.toggle('hidden', choice);
     this.ladder.classList.toggle('hidden', choice);
@@ -152,6 +162,8 @@ export class PuzzlePanel {
   }
 
   setStatus(text: string): void {
+    // On a touch screen the keys are buttons: no Enter, no Space.
+    if (TOUCH) text = text.replace(/ then Enter/g, ' then Answer').replace(/Space: /g, '');
     this.statusEl.textContent = text;
   }
 
@@ -221,10 +233,10 @@ export class PuzzlePanel {
     // Answer button.
     const pending = r.pending;
     if (pending !== null && r.phase === 'listening') {
-      this.answerBtn.textContent = `Enter: answer with ${noteName(pending)}`;
+      this.answerBtn.textContent = keyed('Enter', `answer with ${noteName(pending)}`);
       this.answerBtn.classList.add('ready');
     } else {
-      this.answerBtn.textContent = 'Try the keys, then Enter';
+      this.answerBtn.textContent = TOUCH ? 'Tap a key, then answer' : 'Try the keys, then Enter';
       this.answerBtn.classList.remove('ready');
     }
     const shown = level >= 3 ? r.step.targetMidi : null;

@@ -12,6 +12,8 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { CreatePolyhedron } from '@babylonjs/core/Meshes/Builders/polyhedronBuilder';
+import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder';
+import '@babylonjs/core/Culling/ray';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { AssetContainer } from '@babylonjs/core/assetContainer';
 import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup';
@@ -33,6 +35,7 @@ import type { PuzzlePanel } from '../overlay/PuzzlePanel';
 import type { StoryCard } from '../overlay/StoryCard';
 import { mic } from '../overlay/Title';
 import { el } from '../overlay/dom';
+import { TOUCH } from '../overlay/touch';
 import { VOICE_AFTER_QUIET, VOICE_DRILL_CAP, VOICE_MAX, progress, saveProgress } from '../state';
 import { AREAS, type AreaDef, type DoorDef, type GateDef, type NpcDef, type PracticeDef } from '../world/areas';
 import { GUIDES } from '../world/guides';
@@ -190,6 +193,12 @@ export class World {
   private vampUntil = 0;
   /** The finale walks the singer to centre stage. */
   private walkTo: { x: number; z: number } | null = null;
+  /** A tap on the ground: the tiles still to cross, and what to do on arrival. */
+  private path: { x: number; y: number }[] | null = null;
+  private tapGoal: 'door' | 'bench' | null = null;
+  private tapMark: Mesh | null = null;
+  private tapMarkAt = -1e9;
+  private onPointer = (e: PointerEvent) => this.tap(e.clientX, e.clientY);
   private practice: PracticeDef | null = null;
   private fragment: Mesh | null = null;
   private fragmentT = 0;
@@ -230,7 +239,7 @@ export class World {
     this.lessonView = overlays.lessonView;
     this.storyCard = overlays.storyCard;
     this.guideView = overlays.guideView;
-    this.bubble = el('div', 'bubble hidden', 'Space');
+    this.bubble = el('div', 'bubble hidden', TOUCH ? 'Tap' : 'Space');
     overlays.ui.appendChild(this.bubble);
     this.talk = el('div', 'talk hidden', '');
     overlays.ui.appendChild(this.talk);
@@ -393,6 +402,11 @@ export class World {
       this.lessonView.show(LESSONS[this.practice!.lesson]);
     };
     this.hud.show(this.area.name);
+    this.hud.onAction = () => this.spaceAction();
+    this.hud.onMap = () => {
+      if (!this.inputLocked) this.openMap();
+    };
+    this.mapView.onClose = () => this.closeMap();
     if (!progress.cardsSeen.includes(this.area.id)) {
       const ok = await this.storyCard.show(this.area.id, this.area.name);
       if (ok) progress.cardsSeen.push(this.area.id);
@@ -414,6 +428,7 @@ export class World {
 
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKey);
+    this.engine.getRenderingCanvas()?.addEventListener('pointerdown', this.onPointer);
     window.addEventListener('blur', this.onBlur);
     this.ready = true;
   }
@@ -553,11 +568,90 @@ export class World {
     } else this.keys.delete(e.code);
   }
 
+  /** A point on the ground as it shows on screen, in client pixels. */
+  project(x: number, y: number, z: number): { x: number; y: number } {
+    const w = this.engine.getRenderWidth();
+    const h = this.engine.getRenderHeight();
+    const p = Vector3.Project(new Vector3(x, y, z), Matrix.Identity(), this.scene.getTransformMatrix(), this.camera.viewport.toGlobal(w, h));
+    const r = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+    return { x: r.left + (p.x / w) * r.width, y: r.top + (p.y / h) * r.height };
+  }
+
+  /**
+   * A tap or click on the ground (touch play): the singer walks there over free tiles. A tap on a
+   * door walks up to it and listens; on the bench, sits down to the lesson; on a wall or a person,
+   * to the nearest free tile beside it.
+   */
+  tap(clientX: number, clientY: number): void {
+    if (this.inputLocked || this.transitioning) return;
+    const r = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+    const sx = clientX - r.left;
+    const sy = clientY - r.top;
+    const pick = this.scene.pick(sx, sy, (m) => m.name === 'ground' || m.name.startsWith('ground_primitive') || m.name.startsWith('ground.'));
+    let p = pick?.pickedPoint ?? null;
+    if (!p) {
+      const ray = this.scene.createPickingRay(sx, sy, Matrix.Identity(), this.camera);
+      if (Math.abs(ray.direction.y) < 1e-4) return;
+      p = ray.origin.add(ray.direction.scale(-ray.origin.y / ray.direction.y));
+    }
+    const t = this.grid.tileOf(p.x, p.z);
+    const from = this.playerTile();
+    const around = (c: { x: number; y: number }) => [{ x: c.x + 1, y: c.y }, { x: c.x - 1, y: c.y }, { x: c.x, y: c.y + 1 }, { x: c.x, y: c.y - 1 }];
+    let goals = [t];
+    this.tapGoal = null;
+    const door = this.doors.find((d) => d.def.tiles.some((dt) => dt.x === t.x && dt.y === t.y));
+    const bench = this.practice && ((this.practice.tile.x === t.x && this.practice.tile.y === t.y) || (this.practice.at.x === t.x && this.practice.at.y === t.y));
+    if (door && !door.solved) {
+      goals = door.def.tiles.flatMap(around);
+      this.tapGoal = 'door';
+    } else if (bench) {
+      goals = [this.practice!.at];
+      this.tapGoal = 'bench';
+    } else if (!this.grid.free(t.x, t.y)) goals = around(t);
+    const path = this.grid.path(from, goals);
+    if (!path) {
+      this.tapGoal = null;
+      return;
+    }
+    this.path = path;
+    this.showTapMark(t);
+    if (!path.length) this.arrive();
+  }
+
+  private showTapMark(t: { x: number; y: number }): void {
+    if (!this.tapMark) {
+      this.tapMark = CreateDisc('tap-mark', { radius: 0.38, tessellation: 24 }, this.scene);
+      this.tapMark.rotation.x = Math.PI / 2;
+      this.tapMark.isPickable = false;
+      const mat = new StandardMaterial('tap-mark', this.scene);
+      mat.emissiveColor = hexToColor3(this.palette.accent);
+      mat.disableLighting = true;
+      mat.alpha = 0.7;
+      this.tapMark.material = mat;
+    }
+    this.tapMark.position.set(t.x + 0.5, 0.03, t.y + 0.5);
+    this.tapMark.setEnabled(true);
+    this.tapMarkAt = performance.now();
+  }
+
+  /** The end of a tapped walk: the door or the bench the tap meant. */
+  private arrive(): void {
+    const goal = this.tapGoal;
+    this.path = null;
+    this.tapGoal = null;
+    if (goal === 'door') {
+      const d = this.nearestDoor();
+      if (d) void this.startPuzzle(d, d.def.puzzle);
+    } else if (goal === 'bench' && this.nearPractice()) this.openLesson();
+  }
+
   /** Where the player is heading, eased, so the camera leads a little into the walk. */
   private lookAhead = new Vector3();
 
   private placeCamera(k: number): void {
     const target = this.player.root.position.add(CAM_OFFSET).addInPlace(this.lookAhead);
+    // A phone held upright with the door panel up: the panel covers the bottom half, so the singer is kept above it.
+    if (this.runner && this.engine.getRenderHeight() > this.engine.getRenderWidth()) target.z += 2.6;
     if (this.focus) {
       // Push in toward the door: the target slides halfway to it and the camera comes a little closer.
       const t = Math.max(0, Math.min(1, (this.focus.until - performance.now()) / 1600));
@@ -755,12 +849,15 @@ export class World {
       if (hit !== null) this.playPipe(hit);
       return;
     }
-    if (ev.code === 'Space') {
-      if (this.transitioning) return;
-      const d = this.nearestDoor();
-      if (d) void this.startPuzzle(d, d.def.puzzle);
-      else if (this.nearPractice()) this.openLesson();
-    }
+    if (ev.code === 'Space') this.spaceAction();
+  }
+
+  /** What Space does on the ground: listen to the door at hand, or sit at the bench. */
+  private spaceAction(): void {
+    if (this.inputLocked || this.transitioning) return;
+    const d = this.nearestDoor();
+    if (d) void this.startPuzzle(d, d.def.puzzle);
+    else if (this.nearPractice()) this.openLesson();
   }
 
   /** A key pressed or clicked: sound it and hold it as the note Enter will answer with. */
@@ -794,6 +891,8 @@ export class World {
     panelOpen();
     this.panel.onSign = (q) => void runner.attemptChoice(q);
     this.panel.onKey = (midi) => this.playPipe(midi);
+    this.panel.onReplay = () => void this.runner?.replay();
+    this.panel.onLeave = () => this.endPuzzle(false);
     this.panel.onAnswer = () => void runner.confirm();
     this.panel.show(runner);
     this.hud.setHint('');
@@ -1344,12 +1443,29 @@ export class World {
       if (k.has('ArrowUp') || k.has('KeyW')) dz -= 1;
       if (k.has('ArrowDown') || k.has('KeyS')) dz += 1;
     }
+    // A key cancels a tapped walk; otherwise the walk steers toward the next tile of its path.
+    if (dx || dz || this.inputLocked) this.path = null;
+    else if (this.path) {
+      const n = this.path[0];
+      const ddx = n.x + 0.5 - this.player.x;
+      const ddz = n.y + 0.5 - this.player.z;
+      const dist = Math.hypot(ddx, ddz);
+      if (dist < 0.12) {
+        this.path.shift();
+        if (!this.path.length) this.arrive();
+      } else {
+        const s = Math.min(1, dist / (WALK_SPEED * dt));
+        dx = (ddx / dist) * s;
+        dz = (ddz / dist) * s;
+      }
+    }
+    if (this.tapMark && performance.now() - this.tapMarkAt > 700) this.tapMark.setEnabled(false);
     const moving = dx !== 0 || dz !== 0;
     // The camera leads into the walk by about a tile and settles back when the player stops.
     const ahead = moving ? new Vector3(dx * 1.3, 0, dz * 1.3) : Vector3.Zero();
     this.lookAhead.addInPlace(ahead.subtract(this.lookAhead).scale(Math.min(1, dt * 2.2)));
     if (moving) {
-      if (dx && dz) (dx *= Math.SQRT1_2), (dz *= Math.SQRT1_2);
+      if (!this.path && dx && dz) (dx *= Math.SQRT1_2), (dz *= Math.SQRT1_2);
       const step = WALK_SPEED * dt;
       const r = this.grid.move(this.player.x, this.player.z, dx * step, dz * step);
       this.player.setPosition(r.x, r.z);
@@ -1386,11 +1502,11 @@ export class World {
       if (d) {
         const t = d.def.tiles[0];
         this.placeBubble(t.x + 0.5, d.solved ? 1.0 : 1.7, t.y + 0.5);
-        this.hud.setHint(d.solved ? 'Space: sing this door again' : 'Space: listen to the door');
+        this.hud.setHint(d.solved ? 'Space: sing this door again' : 'Space: listen to the door', d.solved ? 'Sing it again' : 'Listen');
       } else if (this.practice && this.nearPractice()) {
         const t = this.practice.tile;
         this.placeBubble(t.x + 0.5, 1.2, t.y + 0.5);
-        this.hud.setHint('Space: practise here');
+        this.hud.setHint('Space: practise here', 'Practise');
       } else {
         this.bubble.classList.add('hidden');
         this.hud.setHint(this.area.id === 'hub' && progress.solved.length === 0 ? 'Arrow keys or WASD to walk. Find the humming door.  M: map' : 'M: map');
@@ -1497,6 +1613,7 @@ export class World {
     MusicPlayer.get().stop();
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('keyup', this.onKey);
+    this.engine.getRenderingCanvas()?.removeEventListener('pointerdown', this.onPointer);
     window.removeEventListener('blur', this.onBlur);
     this.scene.dispose();
   }

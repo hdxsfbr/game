@@ -1,6 +1,7 @@
 import type { LessonDef, LessonPage } from '../world/lessons';
 import { colorToCss, type Palette } from '../world/palette';
 import { clear, el } from './dom';
+import { keyed } from './touch';
 
 /**
  * The lesson shown at a practice bench: one page at a time, each with a short text and, often,
@@ -32,9 +33,9 @@ export class LessonOverlay {
     this.pageNo = el('div', 'lesson-pageno', '');
     this.dots = el('div', 'lesson-dots');
     top.append(this.titleEl, this.pageNo, this.dots);
-    const leave = el('button', 'btn-small lesson-leave', 'Esc: leave', { type: 'button' });
+    const leave = el('button', 'btn-small lesson-leave', keyed('Esc', 'leave'), { type: 'button' });
     leave.addEventListener('click', () => this.onLeave?.());
-    const guide = el('button', 'btn-small lesson-guide', 'G: the guide', { type: 'button', id: 'lesson-guide' });
+    const guide = el('button', 'btn-small lesson-guide', keyed('G', 'the guide'), { type: 'button', id: 'lesson-guide' });
     guide.addEventListener('click', () => this.onGuide?.());
     const main = el('div', 'lesson-main');
     this.heading = el('h3', '', '');
@@ -105,11 +106,11 @@ export class LessonOverlay {
     this.heading.textContent = p.heading;
     this.body.textContent = p.text;
     this.hearBtn.classList.toggle('hidden', !p.demo);
-    if (p.demo) this.hearBtn.textContent = `Space: hear ${p.demoLabel ?? 'it'}`;
+    if (p.demo) this.hearBtn.textContent = keyed('Space', `hear ${p.demoLabel ?? 'it'}`);
     this.backBtn.style.visibility = this.page > 0 ? 'visible' : 'hidden';
     const last = this.page === lesson.pages.length - 1;
     this.nextBtn.style.visibility = last ? 'hidden' : 'visible';
-    this.drillBtn.textContent = last ? 'Enter: begin the drill' : 'Enter: skip to the drill';
+    this.drillBtn.textContent = keyed('Enter', last ? 'begin the drill' : 'skip to the drill');
     clear(this.dots);
     for (let i = 0; i < lesson.pages.length; i++) this.dots.append(el('i', i === this.page ? 'on' : ''));
   }

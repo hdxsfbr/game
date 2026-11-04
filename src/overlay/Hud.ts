@@ -1,5 +1,6 @@
 import { VOICE_MAX, progress } from '../state';
 import { clear, el } from './dom';
+import { TOUCH } from './touch';
 
 /** Area name, the five notes of voice, the fragment count, a hint line and a toast. */
 export class Hud {
@@ -10,6 +11,10 @@ export class Hud {
   private hint: HTMLElement;
   private toastEl: HTMLElement;
   private toastTimer = 0;
+  /** Touch play: the one thing Space would do here, as a button; and the map. */
+  private actionBtn: HTMLButtonElement;
+  onAction: (() => void) | null = null;
+  onMap: (() => void) | null = null;
 
   constructor(ui: HTMLDivElement) {
     this.root = el('div', 'hud hidden');
@@ -27,7 +32,11 @@ export class Hud {
     this.hint.id = 'hud-hint';
     this.toastEl = el('div', 'toast hidden', '');
     this.toastEl.id = 'toast';
-    this.root.append(left, this.fragments, this.hint, this.toastEl);
+    this.actionBtn = el('button', 'hud-action hidden', '', { type: 'button', id: 'hud-action' });
+    this.actionBtn.addEventListener('click', () => this.onAction?.());
+    const map = el('button', 'hud-map', 'Map', { type: 'button', id: 'hud-map' });
+    map.addEventListener('click', () => this.onMap?.());
+    this.root.append(left, this.fragments, this.hint, this.actionBtn, map, this.toastEl);
     ui.appendChild(this.root);
   }
 
@@ -41,8 +50,12 @@ export class Hud {
     this.root.classList.add('hidden');
   }
 
-  setHint(text: string): void {
+  /** The key hint, and on a touch screen the action button it names instead (none when `action` is empty). */
+  setHint(text: string, action = ''): void {
+    if (TOUCH) text = action ? '' : text.replace(/Arrow keys or WASD to walk/, 'Tap where to walk').replace(/\s*M: map$/, '');
     if (this.hint.textContent !== text) this.hint.textContent = text;
+    if (this.actionBtn.textContent !== action) this.actionBtn.textContent = action;
+    this.actionBtn.classList.toggle('hidden', !action);
   }
 
   refresh(flashIndex = -1): void {

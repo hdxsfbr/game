@@ -1,4 +1,5 @@
 import { el } from './dom';
+import { keyed } from './touch';
 
 /** One line under each area's card, shown the first time the player arrives. */
 export const CARD_LINES: Record<string, string> = {
@@ -28,7 +29,7 @@ export class StoryCard {
     const band = el('div', 'card-band');
     this.titleEl = el('h2', '', '');
     this.lineEl = el('p', '', '');
-    band.append(this.titleEl, this.lineEl, el('span', 'card-hint', 'Space: continue'));
+    band.append(this.titleEl, this.lineEl, el('span', 'card-hint', keyed('Space', 'continue')));
     this.root.append(this.img, band);
     this.root.addEventListener('click', () => this.hide());
     ui.appendChild(this.root);

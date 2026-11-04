@@ -5,6 +5,7 @@ import { noteName } from '../ear/pitchMath';
 import type { GuideStep } from '../world/guides';
 import { colorToCss, type Palette } from '../world/palette';
 import { clear, el } from './dom';
+import { keyed } from './touch';
 
 const BLACK = new Set([1, 3, 6, 8, 10]);
 
@@ -41,7 +42,7 @@ export class GuideView {
     this.titleEl = el('h2', '', '');
     this.dots = el('div', 'lesson-dots');
     top.append(this.titleEl, el('div', 'lesson-pageno', 'the guide'), this.dots);
-    const leave = el('button', 'btn-small lesson-leave', 'Esc: leave', { type: 'button' });
+    const leave = el('button', 'btn-small lesson-leave', keyed('Esc', 'leave'), { type: 'button' });
     leave.addEventListener('click', () => this.onLeave?.());
     const main = el('div', 'lesson-main guide-main');
     this.caption = el('p', 'guide-caption', '');
@@ -51,11 +52,11 @@ export class GuideView {
     const foot = el('div', 'lesson-foot');
     this.backBtn = el('button', 'btn-small', '←  back', { type: 'button' });
     this.backBtn.addEventListener('click', () => this.go(-1));
-    const again = el('button', 'btn-small', 'Space: again', { type: 'button' });
+    const again = el('button', 'btn-small', keyed('Space', 'again'), { type: 'button' });
     again.addEventListener('click', () => this.play(this.step));
-    const pages = el('button', 'btn-small', 'P: the pages', { type: 'button', id: 'guide-pages' });
+    const pages = el('button', 'btn-small', keyed('P', 'the pages'), { type: 'button', id: 'guide-pages' });
     pages.addEventListener('click', () => this.onPages?.());
-    this.drillBtn = el('button', 'btn-small', 'Enter: begin the drill', { type: 'button', id: 'guide-drill' });
+    this.drillBtn = el('button', 'btn-small', keyed('Enter', 'begin the drill'), { type: 'button', id: 'guide-drill' });
     this.drillBtn.addEventListener('click', () => this.onDrill?.());
     this.nextBtn = el('button', 'btn-small', 'next  →', { type: 'button' });
     this.nextBtn.addEventListener('click', () => this.go(1));

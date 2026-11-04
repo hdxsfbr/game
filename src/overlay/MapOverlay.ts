@@ -2,6 +2,7 @@ import type { Progress } from '../state';
 import { AREAS, type AreaDef, type DoorDef } from '../world/areas';
 import { PALETTES, colorToCss, type Palette } from '../world/palette';
 import { el } from './dom';
+import { keyed } from './touch';
 
 const FONT = 'Georgia, "Times New Roman", serif';
 const MONO = 'ui-monospace, Menlo, Consolas, monospace';
@@ -54,13 +55,16 @@ export class MapOverlay {
   private blocked: Rect[] = [];
 
   constructor(ui: HTMLDivElement) {
-    this.root = el('div', 'map hidden');
+    this.root = el('div', 'map hidden clickable');
     this.root.id = 'map';
     this.canvas = el('canvas', '');
     this.ctx = this.canvas.getContext('2d')!;
-    this.root.append(this.canvas, el('p', 'map-foot', 'M or Esc: close the map'));
+    this.root.append(this.canvas, el('p', 'map-foot', keyed('M or Esc', 'close the map')));
+    this.root.addEventListener('click', () => this.onClose?.());
     ui.appendChild(this.root);
   }
+
+  onClose: (() => void) | null = null;
 
   get visible(): boolean {
     return !this.root.classList.contains('hidden');

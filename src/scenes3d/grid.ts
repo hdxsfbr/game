@@ -38,6 +38,41 @@ export class Grid {
     return { x: Math.floor(px), y: Math.floor(pz) };
   }
 
+  free(x: number, y: number): boolean {
+    return !(this.blocked[y]?.[x] ?? true);
+  }
+
+  /**
+   * The shortest walk from a tile to any of some goal tiles, four ways at a time over free tiles, as
+   * the tiles after the start; null when none can be reached. For a tap on the ground.
+   */
+  path(from: { x: number; y: number }, goals: { x: number; y: number }[]): { x: number; y: number }[] | null {
+    const key = (x: number, y: number) => y * this.w + x;
+    const want = new Set(goals.filter((g) => this.free(g.x, g.y)).map((g) => key(g.x, g.y)));
+    if (!want.size) return null;
+    if (want.has(key(from.x, from.y))) return [];
+    const prev = new Map<number, number>();
+    const queue = [from];
+    prev.set(key(from.x, from.y), -1);
+    for (let i = 0; i < queue.length; i++) {
+      const { x, y } = queue[i];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const k = key(nx, ny);
+        if (prev.has(k) || !this.free(nx, ny)) continue;
+        prev.set(k, key(x, y));
+        if (want.has(k)) {
+          const out: { x: number; y: number }[] = [];
+          for (let c = k; c !== key(from.x, from.y); c = prev.get(c)!) out.push({ x: c % this.w, y: Math.floor(c / this.w) });
+          return out.reverse();
+        }
+        queue.push({ x: nx, y: ny });
+      }
+    }
+    return null;
+  }
+
   /**
    * Move by (dx, dz) with axis-separated sliding. Returns the new position and, when an axis was
    * stopped, the tile that stopped it (so the caller can react to a locked gate).

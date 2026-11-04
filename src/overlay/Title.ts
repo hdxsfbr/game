@@ -6,6 +6,7 @@ import { MicPitchDetector } from '../ear/pitchDetector';
 import { clearProgress, defaultProgress, progress, type InputMode } from '../state';
 import type { WorldStart } from '../scenes3d/World';
 import { clear, el } from './dom';
+import { TOUCH, goFullscreen } from './touch';
 
 /** The microphone, once started on the title screen, for the world to read. */
 export let mic: MicPitchDetector | null = null;
@@ -53,7 +54,7 @@ export class Title {
       });
       box.append(reset);
     }
-    this.root.append(box, el('p', 'title-foot', 'Walk with the arrow keys or WASD. Press Space at a door to listen. Every door can be answered by voice or by keys.'));
+    this.root.append(box, el('p', 'title-foot', TOUCH ? 'Tap where you want to walk. Tap a door to listen. Every door can be answered by voice or by the keys on screen.' : 'Walk with the arrow keys or WASD. Press Space at a door to listen. Every door can be answered by voice or by keys.'));
   }
 
   hide(): void {
@@ -62,6 +63,7 @@ export class Title {
 
   private async begin(mode: InputMode, note: HTMLElement, go: () => void): Promise<void> {
     const engine = AudioEngine.get();
+    goFullscreen();
     await engine.unlock();
     if (mode === 'sing') {
       note.textContent = 'Asking for the microphone…';
