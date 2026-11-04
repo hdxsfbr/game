@@ -36,7 +36,7 @@ import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
 import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec } from '../world/puzzles';
-import { LifeMap, LifePlugin, WaterPlugin } from './colour';
+import { LifeMap, LifePlugin, WaterPlugin, CutawayPlugin, CutawayState } from './colour';
 import { burst } from './fx';
 import { Grid } from './grid';
 import { setMoveSpeed } from './Player';
@@ -54,6 +54,8 @@ const AO_KEY = 'listening-kingdom.ao';
 /** Camera offset from the player, in tiles: high and to the south, looking north over the player's shoulder. */
 const CAM_OFFSET = new Vector3(0, 7.6, 9.2);
 const CAM_LOOK = new Vector3(0, 0.7, -1.2);
+/** Height of a stage deck (scripts/blender/build_area.py STAGE_H): people on stage tiles stand this much higher. */
+const STAGE_H = 0.24;
 // Tiles per second. The 2D game walked at 4.7 and the feet slid badly. The singer now runs when moving
 // (Player.ts measures the clip's stride and picks its rate); 3.4 keeps the areas quick to cross without
 // the feet skating more than the run clip's short steps allow.
@@ -158,7 +160,9 @@ export class World {
   /** A door the camera pushes in on for a moment, and until when. */
   private focus: { x: number; z: number; until: number } | null = null;
   /** People standing about, with the clip they play while their door is sung. */
-  private npcs: Array<{ def: NpcDef; top: TransformNode; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean; sway: number; phase: number }> = [];
+  private npcs: Array<{ def: NpcDef; top: TransformNode; baseY: number; idle: AnimationGroup | null; action: AnimationGroup | null; acting: boolean; sway: number; phase: number }> = [];
+  /** Camera-to-player cutaway shared by the wall, tree and prop materials. */
+  private cutaway = new CutawayState();
   /** The door whose puzzle is running, for the people who react to it. */
   private activeDoor: string | null = null;
   /** What loadExtras did, one line per person or prop, for the headless checks. */
@@ -277,6 +281,10 @@ export class World {
       new LifePlugin(mat, this.lifeMap);
       if (mat.name === 'water') this.water = new WaterPlugin(mat);
     }
+    // Whatever stands between the camera and the player is cut open; the ground, water and doors are not.
+    const cutMats = new Set<Material>();
+    for (const m of this.container.meshes) if (/^(walls|trees|props)(_primitive\d+)?$/.test(m.name) && m.material) cutMats.add(m.material);
+    for (const mat of cutMats) if (mat.name !== 'door-glow') new CutawayPlugin(mat, this.cutaway);
     this.sky = new SkyDome(scene, this.area.id);
     // A warm lamp at the bench and a little bloom on everything that glows.
     for (const e of this.area.entities) {
@@ -285,6 +293,15 @@ export class World {
         lamp.diffuse = hexToColor3(this.palette.accent);
         lamp.intensity = 1.3;
         lamp.range = 4;
+      } else if (e.kind === 'stage') {
+        // Nobody walks onto the stage, and a warm light hangs over it so the band is lit like a band.
+        for (const t of e.tiles) this.grid.setBlocked(t.x, t.y, true);
+        const xs = e.tiles.map((t) => t.x);
+        const ys = e.tiles.map((t) => t.y);
+        const lamp = new PointLight('stage-lamp', new Vector3((Math.min(...xs) + Math.max(...xs) + 1) / 2, 2.6, (Math.min(...ys) + Math.max(...ys) + 1) / 2 + 0.3), scene);
+        lamp.diffuse = hexToColor3(0xffd9a0);
+        lamp.intensity = 1.6;
+        lamp.range = 6;
       }
     }
     // Ambient occlusion: a soft contact shadow where walls meet the ground and props meet the walls.
@@ -509,6 +526,9 @@ export class World {
     const jitter = performance.now() < this.shakeUntil ? new Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, 0) : Vector3.Zero();
     this.camera.position.copyFrom(this.camPos).addInPlace(jitter);
     this.camera.setTarget(this.camPos.subtract(CAM_OFFSET).add(CAM_LOOK));
+    this.cutaway.cam.copyFrom(this.camera.position);
+    this.cutaway.target.copyFrom(this.player.root.position);
+    this.cutaway.target.y += 0.8;
     this.sun.position = this.player.root.position.subtract(this.sun.direction.scale(30));
   }
 
@@ -928,6 +948,7 @@ export class World {
       for (const mat of fresh) if (this.lifeMap) new LifePlugin(mat, this.lifeMap);
     };
     const YAW: Record<string, number> = { south: 0, west: Math.PI / 2, north: Math.PI, east: -Math.PI / 2 };
+    const stageTiles = new Set(this.area.entities.filter((e) => e.kind === 'stage').flatMap((e) => (e as { tiles: { x: number; y: number }[] }).tiles.map((t) => `${t.x},${t.y}`)));
     for (const e of this.area.entities) {
       if (e.kind === 'npc' && people.has(e.model)) {
         try {
@@ -936,8 +957,10 @@ export class World {
           c.addAllToScene();
           world(c);
           const top = c.rootNodes[0] as TransformNode;
-          // Tripo characters face +Z; the singer's offset of a half turn applies to them too.
-          place(top, e.tile, e.scale ?? 1.3, YAW[e.face ?? 'south'] + Math.PI);
+          // Tripo rigs face -Z (toward the camera at yaw 0), unlike the singer, whose own rig is turned in Player.ts.
+          place(top, e.tile, e.scale ?? 1.3, YAW[e.face ?? 'south']);
+          const baseY = stageTiles.has(`${e.tile.x},${e.tile.y}`) ? STAGE_H : 0;
+          top.position.y = baseY;
           this.grid.setBlocked(e.tile.x, e.tile.y, true);
           const idle = c.animationGroups.find((g) => /idle/i.test(g.name)) ?? c.animationGroups[0] ?? null;
           const action = c.animationGroups.find((g) => g !== idle) ?? null;
@@ -945,7 +968,7 @@ export class World {
             g.start(true, 1.0);
             g.setWeightForAllAnimatables(g === idle ? 1 : 0);
           }
-          this.npcs.push({ def: e, top, idle, action, acting: false, sway: 0, phase: Math.random() * 6.28 });
+          this.npcs.push({ def: e, top, baseY, idle, action, acting: false, sway: 0, phase: Math.random() * 6.28 });
           this.extrasLog.push(`npc ${e.model} loaded`);
         } catch (err) {
           this.extrasLog.push(`npc ${e.model} failed: ${String(err).slice(0, 120)}`);
@@ -982,7 +1005,7 @@ export class World {
         n.sway += ((live ? 1 : 0.25) - n.sway) * Math.min(1, dt * 2);
         const t = timeMs / 1000 * (live ? 3.6 : 1.6) + n.phase;
         const s = (n.def.scale ?? 1.3) * 0.012 * n.sway;
-        n.top.position.y = Math.abs(Math.sin(t)) * s * 4;
+        n.top.position.y = n.baseY + Math.abs(Math.sin(t)) * s * 4;
         n.top.rotation.z = Math.sin(t * 0.5) * 0.05 * n.sway;
         continue;
       }

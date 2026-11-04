@@ -30,6 +30,8 @@ export function toStandard(mesh: AbstractMesh, scene: Scene, cache: Map<Material
       out.specularColor = new Color3(0.08, 0.08, 0.08).scale(1 - rough).add(new Color3(0.02, 0.02, 0.02));
       out.specularPower = 16 + (1 - rough) * 64;
     }
+    // Sky, sun, the bench lamp, the stage lamps and the four finale lights can all fall on one mesh.
+    out.maxSimultaneousLights = 10;
     out.backFaceCulling = true;
     if (out.alpha < 1) {
       out.transparencyMode = 2; // alpha blend

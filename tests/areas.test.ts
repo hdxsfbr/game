@@ -38,6 +38,10 @@ describe.each(Object.values(AREAS))('area $id', (area) => {
         if (e.kind === 'practice') expect(area.map[e.at.y][e.at.x]).toBe('.');
         continue;
       }
+      if (e.kind === 'stage') {
+        for (const t of e.tiles) expect(area.map[t.y][t.x], `stage at ${t.x},${t.y}`).toBe('.');
+        continue;
+      }
       const want = e.kind === 'door' ? 'D' : e.kind === 'gate' ? 'G' : 'X';
       for (const t of e.tiles) expect(`${e.kind}@${t.x},${t.y}=${area.map[t.y][t.x]}`).toBe(`${e.kind}@${t.x},${t.y}=${want}`);
     }
@@ -45,7 +49,7 @@ describe.each(Object.values(AREAS))('area $id', (area) => {
 
   it('every D, G and X tile belongs to an entity', () => {
     const owned = new Set<string>();
-    for (const e of area.entities) if (e.kind !== 'fragment' && e.kind !== 'practice' && e.kind !== 'npc' && e.kind !== 'prop') for (const t of e.tiles) owned.add(`${t.x},${t.y}`);
+    for (const e of area.entities) if (e.kind !== 'fragment' && e.kind !== 'practice' && e.kind !== 'npc' && e.kind !== 'prop' && e.kind !== 'stage') for (const t of e.tiles) owned.add(`${t.x},${t.y}`);
     area.map.forEach((row, y) => {
       [...row].forEach((c, x) => {
         if (c === 'D' || c === 'G' || c === 'X') expect(owned.has(`${x},${y}`), `${c} at ${x},${y}`).toBe(true);
@@ -61,6 +65,15 @@ describe.each(Object.values(AREAS))('area $id', (area) => {
         const neighbours = [t, { x: t.x + 1, y: t.y }, { x: t.x - 1, y: t.y }, { x: t.x, y: t.y + 1 }, { x: t.x, y: t.y - 1 }];
         expect(neighbours.some((n) => seen.has(`${n.x},${n.y}`)), `${e.kind} at ${t.x},${t.y}`).toBe(true);
       }
+    }
+  });
+
+  it('puts every person on the stage on one of its tiles, and no one else', () => {
+    const stage = new Set(area.entities.filter((e) => e.kind === 'stage').flatMap((e) => (e as { tiles: { x: number; y: number }[] }).tiles.map((t) => `${t.x},${t.y}`)));
+    for (const e of area.entities) {
+      if (e.kind !== 'npc') continue;
+      const onStage = stage.has(`${e.tile.x},${e.tile.y}`);
+      expect(onStage, `${e.model} at ${e.tile.x},${e.tile.y}`).toBe(['bassist', 'drummer', 'hornplayer', 'chorister', 'chorister-2'].includes(e.model) && (area.id === 'jazz' || area.id === 'stage'));
     }
   });
 

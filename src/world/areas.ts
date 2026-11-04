@@ -76,7 +76,13 @@ export interface PropDef {
   walkable?: boolean;
 }
 
-export type EntityDef = DoorDef | GateDef | ExitDef | PickupDef | PracticeDef | NpcDef | PropDef;
+/** A raised platform (built into the area's world file) that the people placed on its tiles stand on. Not walkable. */
+export interface StageDef {
+  kind: 'stage';
+  tiles: { x: number; y: number }[];
+}
+
+export type EntityDef = DoorDef | GateDef | ExitDef | PickupDef | PracticeDef | NpcDef | PropDef | StageDef;
 
 export interface AreaDef {
   id: string;
@@ -460,8 +466,8 @@ export const JAZZ: AreaDef = {
   '#...........#..T......#.........#.........#.......#........#',
   'X...........D.........D.........D.........D.......D........X',
   '#...........#.........#...~~~~..#.........#.......#........#',
-  '#...........###########...~~~~..#...####..#.......#........#',
-  '#...........###########...~~~~..#...####..#.......#........#',
+  '#...........###########...~~~~..#.........#.......#........#',
+  '#...........###########...~~~~..#.........#.......#........#',
   '####..###..#####..#..#####..#..#####..#..#####..######..####',
   '####..###..#####..#..#####..#..#####..#..#####..######..####',
   '############################################################',
@@ -554,10 +560,12 @@ export const JAZZ: AreaDef = {
       },
     },
     { kind: 'npc', tile: { x: 10, y: 14 }, model: 'doorman', face: 'east', door: 'jazz-club' },
-    // The band plays in front of the stand, facing the street.
-    { kind: 'npc', tile: { x: 35, y: 14 }, model: 'bassist', face: 'south', door: 'jazz-bandstand' },
-    { kind: 'npc', tile: { x: 37, y: 14 }, model: 'drummer', face: 'south', door: 'jazz-bandstand' },
-    { kind: 'npc', tile: { x: 39, y: 14 }, model: 'hornplayer', face: 'south', door: 'jazz-boss' },
+    // The band plays on a stage in the square in front of the band stand, facing the street.
+    // Written out tile by tile: scripts/blender/build_area.py reads these lists with a regex.
+    { kind: 'stage', tiles: [{ x: 34, y: 14 }, { x: 35, y: 14 }, { x: 36, y: 14 }, { x: 37, y: 14 }, { x: 38, y: 14 }, { x: 39, y: 14 }, { x: 40, y: 14 }, { x: 34, y: 15 }, { x: 35, y: 15 }, { x: 36, y: 15 }, { x: 37, y: 15 }, { x: 38, y: 15 }, { x: 39, y: 15 }, { x: 40, y: 15 }] },
+    { kind: 'npc', tile: { x: 35, y: 15 }, model: 'bassist', face: 'south', door: 'jazz-bandstand' },
+    { kind: 'npc', tile: { x: 37, y: 15 }, model: 'drummer', face: 'south', door: 'jazz-bandstand' },
+    { kind: 'npc', tile: { x: 39, y: 15 }, model: 'hornplayer', face: 'south', door: 'jazz-boss' },
     { kind: 'fragment', tile: { x: 55, y: 15 }, id: 'fragment-jazz' },
     { kind: 'exit', tiles: [{ x: 59, y: 15 }], to: 'hub', at: { x: 27, y: 8 } },
   ],
@@ -591,11 +599,14 @@ export const STAGE: AreaDef = {
   entities: [
     { kind: 'exit', tiles: [{ x: 14, y: 16 }], to: 'hub', at: { x: 14, y: 14 } },
     { kind: 'practice', tile: { x: 22, y: 12 }, at: { x: 22, y: 13 }, lesson: 'stage' },
-    { kind: 'npc', tile: { x: 10, y: 4 }, model: 'bassist', face: 'south', door: 'stage-song' },
-    { kind: 'npc', tile: { x: 11, y: 4 }, model: 'drummer', face: 'south', door: 'stage-song' },
-    { kind: 'npc', tile: { x: 18, y: 4 }, model: 'hornplayer', face: 'south', door: 'stage-song' },
-    { kind: 'npc', tile: { x: 19, y: 4 }, model: 'chorister', face: 'south', door: 'stage-song' },
-    { kind: 'npc', tile: { x: 20, y: 4 }, model: 'chorister-2', face: 'south', door: 'stage-song' },
+    // Two side stages flank the proscenium: the rhythm section on the left, the horn and the choir on the right.
+    { kind: 'stage', tiles: [{ x: 5, y: 4 }, { x: 6, y: 4 }, { x: 7, y: 4 }, { x: 8, y: 4 }, { x: 9, y: 4 }, { x: 5, y: 5 }, { x: 6, y: 5 }, { x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }] },
+    { kind: 'stage', tiles: [{ x: 19, y: 4 }, { x: 20, y: 4 }, { x: 21, y: 4 }, { x: 22, y: 4 }, { x: 23, y: 4 }, { x: 19, y: 5 }, { x: 20, y: 5 }, { x: 21, y: 5 }, { x: 22, y: 5 }, { x: 23, y: 5 }] },
+    { kind: 'npc', tile: { x: 6, y: 5 }, model: 'bassist', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 8, y: 5 }, model: 'drummer', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 20, y: 5 }, model: 'hornplayer', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 21, y: 5 }, model: 'chorister', face: 'south', door: 'stage-song' },
+    { kind: 'npc', tile: { x: 22, y: 5 }, model: 'chorister-2', face: 'south', door: 'stage-song' },
     {
       kind: 'door',
       tiles: [{ x: 14, y: 3 }],

@@ -35,6 +35,8 @@ AREAS_TS = os.path.join(ROOT, 'src', 'world', 'areas.ts')
 PALETTE_TS = os.path.join(ROOT, 'src', 'world', 'palette.ts')
 
 WALL = '#'
+# Height of a stage deck; src/scenes3d/World.ts STAGE_H lifts the people standing on it by the same amount.
+STAGE_H = 0.24
 GROUND = '.'
 WATER = '~'
 TREE = 'T'
@@ -87,7 +89,7 @@ def parse_entity(text):
     kind = re.search(r"kind: '(\w+)'", text).group(1)
     e = {'kind': kind}
     tiles_re = r'\{ x: (\d+), y: (\d+) \}'
-    if kind in ('door', 'gate', 'exit'):
+    if kind in ('door', 'gate', 'exit', 'stage'):
         tiles_block = re.search(r'tiles: \[(.*?)\]', text, re.S).group(1)
         e['tiles'] = [(int(x), int(y)) for x, y in re.findall(tiles_re, tiles_block)]
     if kind == 'door':
@@ -102,6 +104,10 @@ def parse_entity(text):
         if kind == 'practice':
             a = re.search(r'at: ' + tiles_re, text)
             e['at'] = (int(a.group(1)), int(a.group(2)))
+    elif kind in ('npc', 'prop'):
+        t = re.search(r'tile: ' + tiles_re, text)
+        e['tile'] = (int(t.group(1)), int(t.group(2)))
+        e['model'] = re.search(r"model: '([\w-]+)'", text).group(1)
     elif kind == 'exit':
         e['to'] = re.search(r"to: '(\w+)'", text).group(1)
     return e
@@ -866,6 +872,39 @@ class Area:
             return obj
         return None
 
+    def build_stage(self, props):
+        """A low deck for the people placed on 'stage' tiles: boards, a dark skirt, a step at the front,
+        footlights along the front edge and two lamp posts with a rail, so the band reads as a band."""
+        p = self.p
+        for e in self.entities:
+            if e['kind'] != 'stage':
+                continue
+            xs = [t[0] for t in e['tiles']]
+            ys = [t[1] for t in e['tiles']]
+            x0, x1, y0, y1 = min(xs), max(xs) + 1, min(ys), max(ys) + 1
+            w, d = x1 - x0, y1 - y0
+            cx, cy = (x0 + x1) / 2, -(y0 + y1) / 2
+            front = cy - d / 2  # the south edge, toward the camera
+            h = STAGE_H
+            deck = material('stage', shade(p['bridge'], 1.05), rough=0.6)
+            skirt = material('stage-skirt', shade(p['accent'], 0.45))
+            dark = material('bench-dark', shade(p['bridge'], 0.6))
+            lamp = material('lamp', p['accent'], emission=p['accent'], rough=0.3)
+            foot = material('neon-gold', 0xFFD36A, emission=0xFFB347, rough=0.3)
+            props.box((cx, cy, h - 0.04), (w - 0.06, d - 0.06, 0.08), deck, bevel=0.02)
+            props.box((cx, cy, (h - 0.08) / 2), (w - 0.1, d - 0.1, h - 0.08), skirt)
+            # Board lines across the deck.
+            for i in range(1, int(w * 3)):
+                props.box((x0 + i / 3, cy, h + 0.001), (0.012, d - 0.1, 0.004), dark, smooth=False)
+            props.box((cx, front - 0.14, 0.06), (min(w - 1, 2.0), 0.28, 0.12), deck, bevel=0.02)
+            for i in range(int(w * 2)):
+                props.box((x0 + 0.25 + i * 0.5, front + 0.1, h + 0.04), (0.14, 0.08, 0.07), foot, bevel=0.01)
+            for sx in (x0 + 0.14, x1 - 0.14):
+                props.cylinder((sx, front + 0.16, h + 0.8), 0.035, 1.6, dark, segments=6)
+                props.box((sx, front + 0.16, h + 1.66), (0.2, 0.2, 0.22), lamp, bevel=0.03)
+                props.box((sx, front + 0.16, h + 1.8), (0.22, 0.22, 0.05), dark, bevel=0.02)
+            props.box((cx, front + 0.16, h + 1.56), (w - 0.28, 0.04, 0.04), dark)
+
     def build_exits(self, props):
         p = self.p
         stone = material('pillar', shade(p['wall'], 0.85))
@@ -930,11 +969,11 @@ class Area:
                     props.box((cx, wy + side * 0.1, 1.5), (0.7, 0.14, 0.42), dark, bevel=0.02)
                     props.box((cx, wy + side * 0.2, 1.5), (0.56, 0.03, 0.08), neon if (i + side) % 2 else neon2)
                     props.box((cx, wy + side * 0.2, 1.36), (0.4, 0.03, 0.05), neon2 if (i + side) % 2 else neon)
-            # The band stand: the island block in the street becomes a low stage with a canopy.
+            # The band stand: the block behind the stage gets a marquee slab and a neon fascia over the square.
             stand = material('stand', shade(p['bridge'], 1.1))
             post = material('post', shade(p['wall'], 0.5))
             for (x0, y, n) in self.wall_runs():
-                if not (y in (12, 13, 17, 18) and 30 < x0 < 45):
+                if not (y in (12, 13) and 30 < x0 < 45):
                     continue
                 cx = x0 + n / 2
                 cy = -(y + 0.5)
@@ -943,11 +982,6 @@ class Area:
                 for sx in (-1, 1):
                     for sy in (-1, 1):
                         props.cylinder((cx + sx * (n / 2 + 0.05), cy + sy * 0.55, 1.5), 0.04, 0.8, post, segments=6)
-            # Drums and a double bass on the stand nearest the band stand door.
-            drum = material('drum', shade(p['accent'], 0.7), rough=0.5)
-            props.cylinder((37.5, -12.6, 1.45), 0.22, 0.25, drum, segments=12)
-            props.cylinder((38.2, -12.9, 1.4), 0.16, 0.18, drum, segments=12)
-            props.box((36.6, -12.8, 1.7), (0.18, 0.3, 0.9), material('bass', shade(p['bridge'], 0.8)), bevel=0.06)
         elif self.style == 'stage':
             curtain = material('curtain', 0x9B2335, rough=0.9)
             gold = material('gold', p['accent'], rough=0.35, metal=0.6, emission=shade(p['accent'], 0.25))
@@ -1041,6 +1075,7 @@ def build_area(area, palette, out_dir):
     a.build_doors(props)
     a.build_gates(props)
     a.build_bench(props)
+    a.build_stage(props)
     a.build_exits(props)
     a.area_props(props)
     a.decorate(props)

@@ -44,7 +44,7 @@ from another machine. The mic starts on a click.
 - `node scripts/playthrough.mjs [url] [outDir]`: drives the whole game in headless Chrome through
   every door, going quiet and practising on the way, and fails on console errors or silent prompts.
 - `node scripts/smoke.mjs <url>`: boot, Play and the first door on a deployed build.
-- URL shortcuts on any build: `?scene=world&area=jazz&x=36&y=15` starts in front of the Jazz Quarter band
+- URL shortcuts on any build: `?scene=world&area=jazz&x=37&y=17` starts in front of the Jazz Quarter band
   after the title, `?open=jazz` (or `?open=all`) counts that area's doors as opened so the whole street
   can be walked, `?reset=1` clears saved progress, `?ao=on` turns ambient occlusion on.
 - `scripts/deploy.sh`: build, upload to the Railway `game` service, wait for the build and smoke-test the live URL (`--no-smoke` skips the last step).
@@ -58,6 +58,10 @@ from another machine. The mic starts on a click.
   [outDir] [url]` takes the shots behind `docs/playtest-2026-11-03.md` and measures the chord demo's peak level.
   `python3 scripts/doors.py` lists every door and gate with the facing the generator gives it (no
   Blender needed) and `scripts/doorshots.sh [outDir] [url]` screenshots each one from the passage side.
+- `scripts/reviewshots.sh [outDir] [url] [area]`: the visual review. One screenshot of every place worth
+  looking at in every area (start, doors, gates, bench, people, stage, fragment, exits), in colour, plus a
+  zoomed crop of every person so facing and detail are judged, not guessed. Any change to the world, the
+  people or the camera ends with this sweep and a look at every image.
   `node scripts/bootshot.mjs [url]` checks the page's own loader (index.html) on a throttled connection.
   `node scripts/assets-index.mjs` lists the Tripo characters and props present so the game loads them
   (`docs/tripo-brief.md` is the job list with prompts and file names).

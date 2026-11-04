@@ -10,6 +10,7 @@ import type { Scene } from '@babylonjs/core/scene';
 import type { SubMesh } from '@babylonjs/core/Meshes/subMesh';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { Nullable } from '@babylonjs/core/types';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 /**
  * The grey-to-colour mechanic. Every tile has a "life" from 0 (the world as the player finds
@@ -231,6 +232,81 @@ uniform sampler2D skySampler;
   float lum = dot(sky, vec3(0.299, 0.587, 0.114));
   vec3 grey = vec3(mix(lum, 0.55, 0.5)) * vec3(0.74, 0.76, 0.82);
   color.rgb = mix(grey, sky, smoothstep(0.0, 1.0, skyLife));
+}
+#endif`,
+    };
+  }
+}
+
+/** Shared by every CutawayPlugin: the camera, the point the player must stay visible at, and the hole's radius. */
+export class CutawayState {
+  readonly cam = new Vector3();
+  readonly target = new Vector3();
+  radius = 0.9;
+}
+
+/**
+ * Walls, trees and props between the camera and the player are cut away: fragments inside a cylinder
+ * around the camera-to-player line are dropped with a Bayer dither, so a street-side building never
+ * hides the player, whatever the map puts south of them. The shadow pass is untouched, so the cut
+ * building still throws its shadow.
+ */
+export class CutawayPlugin extends MaterialPluginBase {
+  constructor(
+    material: Material,
+    private readonly state: CutawayState,
+  ) {
+    super(material, 'Cutaway', 245, { CUTAWAY: false });
+    this._enable(true);
+  }
+
+  override prepareDefines(defines: MaterialDefines): void {
+    defines['CUTAWAY'] = true;
+  }
+
+  override getClassName(): string {
+    return 'CutawayPlugin';
+  }
+
+  override getUniforms(): { ubo?: Array<{ name: string; size: number; type: string }>; vertex?: string; fragment?: string } {
+    return {
+      ubo: [
+        { name: 'cutCam', size: 3, type: 'vec3' },
+        { name: 'cutTarget', size: 3, type: 'vec3' },
+        { name: 'cutRadius', size: 1, type: 'float' },
+      ],
+      fragment: `#ifdef CUTAWAY
+uniform vec3 cutCam;
+uniform vec3 cutTarget;
+uniform float cutRadius;
+#endif`,
+    };
+  }
+
+  override bindForSubMesh(uniformBuffer: UniformBuffer): void {
+    const s = this.state;
+    uniformBuffer.updateFloat3('cutCam', s.cam.x, s.cam.y, s.cam.z);
+    uniformBuffer.updateFloat3('cutTarget', s.target.x, s.target.y, s.target.z);
+    uniformBuffer.updateFloat('cutRadius', s.radius);
+  }
+
+  override getCustomCode(shaderType: string): Nullable<{ [pointName: string]: string }> {
+    if (shaderType !== 'fragment') return null;
+    return {
+      CUSTOM_FRAGMENT_MAIN_BEGIN: `#ifdef CUTAWAY
+{
+  vec3 ab = cutTarget - cutCam;
+  vec3 ap = vPositionW - cutCam;
+  float t = dot(ap, ab) / dot(ab, ab);
+  // Only what lies between the camera and the player, never the wall at their back.
+  if (t > 0.08 && t < 0.95) {
+    float d = length(ap - ab * t);
+    float cut = smoothstep(cutRadius, cutRadius * 0.82, d);
+    vec2 p1 = mod(floor(gl_FragCoord.xy), 4.0);
+    vec2 p2 = floor(p1 * 0.5);
+    float bayer = (4.0 * mod(2.0 * mod(p1.x, 2.0) + 3.0 * mod(p1.y, 2.0), 4.0) + mod(2.0 * p2.x + 3.0 * p2.y, 4.0)) / 16.0;
+    if (cut > bayer + 0.02) discard;
+  }
 }
 #endif`,
     };
