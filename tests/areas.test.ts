@@ -98,3 +98,20 @@ describe('valley gating', () => {
     expect(seen.has('7,18')).toBe(false); // serpent's north bank
   });
 });
+
+describe('talk', () => {
+  it('gives every person in every area some lines, before and after their door', async () => {
+    const { talkFor } = await import('../src/world/talk');
+    for (const area of Object.values(AREAS)) {
+      for (const e of area.entities) {
+        if (e.kind !== 'npc') continue;
+        const t = talkFor(area.id, e.model);
+        expect(t, `${area.id}/${e.model}`).not.toBeNull();
+        expect(t!.after.length, `${area.id}/${e.model} after`).toBeGreaterThan(0);
+        // The quarter's band is frozen until its door and says nothing before it.
+        if (!(area.id === 'jazz' && ['bassist', 'drummer'].includes(e.model))) expect(t!.before.length, `${area.id}/${e.model} before`).toBeGreaterThan(0);
+        for (const line of [...t!.before, ...t!.after]) expect(line.length, line).toBeLessThan(90);
+      }
+    }
+  });
+});

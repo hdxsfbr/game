@@ -35,6 +35,7 @@ import { el } from '../overlay/dom';
 import { VOICE_AFTER_QUIET, VOICE_DRILL_CAP, VOICE_MAX, progress, saveProgress } from '../state';
 import { AREAS, type AreaDef, type DoorDef, type GateDef, type NpcDef, type PracticeDef } from '../world/areas';
 import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
+import { talkFor } from '../world/talk';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
 import { CHORD_NAMES, CHORD_QUALITIES, CHORD_TONES, makeQuestion, type ChordQuality, type PuzzleSpec, type Step } from '../world/puzzles';
@@ -194,6 +195,10 @@ export class World {
   private voiceMuteUntil = 0;
   private lastBump = 0;
   private bubble: HTMLDivElement;
+  /** A person's line, over their head while the singer stands near. */
+  private talk: HTMLDivElement;
+  private talking: string | null = null;
+  private talkTurn = new Map<string, number>();
   private hud: Hud;
   private mapView: MapOverlay;
   private lessonView: LessonOverlay;
@@ -221,6 +226,8 @@ export class World {
     this.storyCard = overlays.storyCard;
     this.bubble = el('div', 'bubble hidden', 'Space');
     overlays.ui.appendChild(this.bubble);
+    this.talk = el('div', 'talk hidden', '');
+    overlays.ui.appendChild(this.talk);
   }
 
   static async create(engine: Engine, start: WorldStart, hooks: WorldHooks, overlays: Overlays): Promise<World> {
@@ -1390,19 +1397,56 @@ export class World {
     if (this.water) this.water.time = timeMs / 1000;
     if (this.glow) this.glow.emissiveColor = this.glowBase.scale(0.55 + 0.45 * Math.sin(timeMs / 420));
     this.updateNpcs(dt, timeMs);
+    this.updateTalk();
     this.updateColour(dt * 1000, timeMs);
     MusicPlayer.get().setLife(this.areaLife());
     Tracks.get().setLife(this.areaLife());
     this.placeCamera(Math.min(1, dt * 6));
   }
 
-  private placeBubble(x: number, y: number, z: number): void {
+  private placeBubble(x: number, y: number, z: number, box: HTMLDivElement = this.bubble): void {
     const w = this.engine.getRenderWidth();
     const h = this.engine.getRenderHeight();
     const p = Vector3.Project(new Vector3(x, y, z), Matrix.Identity(), this.scene.getTransformMatrix(), this.camera.viewport.toGlobal(w, h));
-    this.bubble.style.left = `${(p.x / w) * window.innerWidth}px`;
-    this.bubble.style.top = `${(p.y / h) * window.innerHeight}px`;
-    this.bubble.classList.remove('hidden');
+    box.style.left = `${(p.x / w) * window.innerWidth}px`;
+    box.style.top = `${(p.y / h) * window.innerHeight}px`;
+    box.classList.remove('hidden');
+  }
+
+  /**
+   * The nearest person within two tiles speaks: a line over their head, the next one in their list
+   * each time the singer comes back, a different list once their door is open. Not while a door or
+   * lesson has the floor, and not from the quarter's band while it is frozen.
+   */
+  private updateTalk(): void {
+    let best: (typeof this.npcs)[number] | null = null;
+    let bestD = 2.0;
+    if (!this.inputLocked) {
+      for (const n of this.npcs) {
+        if (n.frozen) continue;
+        const d = Math.hypot(this.player.x - n.top.position.x, this.player.z - n.top.position.z);
+        if (d < bestD) {
+          bestD = d;
+          best = n;
+        }
+      }
+    }
+    const key = best ? `${this.area.id}/${best.def.model}@${best.def.tile.x},${best.def.tile.y}` : null;
+    if (key !== this.talking) {
+      this.talking = key;
+      if (best && key) {
+        const t = talkFor(this.area.id, best.def.model);
+        const open = !!best.def.door && (progress.solved.includes(best.def.door) || (best.def.door === 'stage-song' && progress.finished));
+        const lines = t ? (open ? t.after : t.before) : [];
+        if (lines.length) {
+          const i = this.talkTurn.get(key) ?? 0;
+          this.talkTurn.set(key, i + 1);
+          this.talk.textContent = lines[i % lines.length];
+        } else this.talking = null;
+      }
+    }
+    if (best && this.talking) this.placeBubble(best.top.position.x, best.baseY + 1.2 * (best.def.scale ?? 1.3), best.top.position.z, this.talk);
+    else this.talk.classList.add('hidden');
   }
 
   /**
@@ -1432,6 +1476,7 @@ export class World {
     this.runner = null;
     this.panel.hide();
     this.bubble.remove();
+    this.talk.remove();
     setBandListener(null);
     MusicPlayer.get().stop();
     window.removeEventListener('keydown', this.onKey);
