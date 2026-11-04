@@ -20,6 +20,7 @@ import '@babylonjs/loaders/glTF';
 import { type BandCue, type BandPart, bandCue, setBandListener } from '../audio/bandBus';
 import { AudioEngine } from '../audio/engine';
 import { MusicPlayer } from '../audio/music';
+import { Tracks } from '../audio/tracks';
 import { doorOpen, footstep, gateLocked, panelOpen } from '../audio/sfx';
 import { playCadence, playChord, playNote, playSequence } from '../audio/synth';
 import { hzToMidi } from '../ear/pitchMath';
@@ -372,7 +373,16 @@ export class World {
       if (ok) progress.cardsSeen.push(this.area.id);
     }
     saveProgress(progress);
-    this.startMusic();
+    if (this.storyCard.visible) {
+      // The story piece under the card; the area's music starts when the card goes.
+      MusicPlayer.get().stop();
+      Tracks.get().play('story', { loop: true, fade: 600 });
+      this.storyCard.onDone = () => {
+        this.storyCard.onDone = null;
+        Tracks.get().stop('story', 900);
+        if (!this.disposed) this.startMusic();
+      };
+    } else this.startMusic();
     MusicPlayer.get().setLife(this.areaLife());
     setBandListener((c) => this.onBandCue(c));
 
@@ -658,13 +668,26 @@ export class World {
 
   // ---------- puzzles ----------
 
+  /** The map, with the story piece under it and the area music stepped aside. */
+  private openMap(): void {
+    this.mapView.show(this.area);
+    MusicPlayer.get().setPaused(true);
+    Tracks.get().play('story', { loop: true, fade: 500 });
+  }
+
+  private closeMap(): void {
+    this.mapView.hide();
+    Tracks.get().stop('story', 600);
+    if (!this.runner) MusicPlayer.get().setPaused(false);
+  }
+
   private onKeyDown(ev: KeyboardEvent): void {
     if (this.storyCard.visible) {
       if (ev.code === 'Space' || ev.code === 'Enter' || ev.code === 'Escape') this.storyCard.hide();
       return;
     }
     if (this.mapView.visible) {
-      if (ev.code === 'KeyM' || ev.code === 'Escape' || ev.code === 'Space') this.mapView.hide();
+      if (ev.code === 'KeyM' || ev.code === 'Escape' || ev.code === 'Space') this.closeMap();
       return;
     }
     if (this.lessonView.visible) {
@@ -676,7 +699,7 @@ export class World {
       return;
     }
     if (!this.runner && ev.code === 'KeyM') {
-      this.mapView.show(this.area);
+      this.openMap();
       return;
     }
     if (this.runner) {
@@ -813,7 +836,7 @@ export class World {
     const msTo = (time: number) => Math.max(0, (time - engine.now) * 1000);
     // Centre stage is the middle of the floor below the door; the singer walks there as the band starts.
     this.walkTo = { x: t.x + 0.5, z: t.y + 1.7 };
-    this.celebrateUntil = performance.now() + msTo(tEnd) + 9000;
+    this.celebrateUntil = performance.now() + msTo(tEnd) + 12000;
     // Stage lights, one per bar, in the kingdom's colours, with a spark where each comes on.
     const colours = [PALETTES.valley.accent, PALETTES.town.accent, PALETTES.jazz.accent, this.palette.accent];
     colours.forEach((hex, bar) => {
@@ -841,9 +864,14 @@ export class World {
       burst(this.scene, pos, hex, { count: 160, life: 1.6, speed: 3.2, gravity: 2.5, size: 0.16, color2: 0xfff2c0 });
       playNote(84 + Math.floor(Math.random() * 12), { timbre: 'bell', duration: 0.3, gain: 0.12 });
     };
-    for (let i = 0; i < 12; i++) this.later(msTo(tEnd) + 200 + i * 650 + Math.random() * 200, firework);
+    for (let i = 0; i < 17; i++) this.later(msTo(tEnd) + 200 + i * 650 + Math.random() * 200, firework);
     this.later(msTo(tEnd) - 400, () => this.bloomAt(t.x, t.y, 1e9));
-    this.later(msTo(tEnd) + 9000, () => {
+    // Once the held chord has died away, the recorded finale takes over from the synth and carries on under the results.
+    this.later(msTo(tEnd) + 4000, () => {
+      MusicPlayer.get().stop();
+      Tracks.get().play('finale', { fade: 1500, then: 'credits' });
+    });
+    this.later(msTo(tEnd) + 12000, () => {
       this.transitioning = true;
       void this.hooks.fade(true, 900).then(() => this.hooks.onFinished());
     });

@@ -6,6 +6,7 @@ import { PuzzlePanel } from '../overlay/PuzzlePanel';
 import { Results } from '../overlay/Results';
 import { StoryCard } from '../overlay/StoryCard';
 import { Title } from '../overlay/Title';
+import { Tracks } from '../audio/tracks';
 import { clearProgress, defaultProgress, progress, saveProgress } from '../state';
 import { AREAS } from '../world/areas';
 import { PALETTES } from '../world/palette';
@@ -61,6 +62,7 @@ export class App {
     this.overlays.hud.hide();
     // The page's own loader (index.html) has done its job once the title is up.
     document.getElementById('boot')?.remove();
+    Tracks.get().stopAll(800);
     this.title.show(startAt, (mode, at) => {
       progress.inputMode = mode;
       if (!progress.startedAt) progress.startedAt = Date.now();
@@ -71,6 +73,7 @@ export class App {
 
   private async enterWorld(start: WorldStart): Promise<void> {
     await this.setFade(true, 350);
+    Tracks.get().stopAll(800);
     this.results.hide();
     this.world?.dispose();
     this.world = null;

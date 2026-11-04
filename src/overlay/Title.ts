@@ -1,5 +1,6 @@
 import { AudioEngine } from '../audio/engine';
 import { uiClick } from '../audio/sfx';
+import { Tracks } from '../audio/tracks';
 import { playSequence } from '../audio/synth';
 import { MicPitchDetector } from '../ear/pitchDetector';
 import { clearProgress, defaultProgress, progress, type InputMode } from '../state';
@@ -22,6 +23,7 @@ export class Title {
   show(startAt: WorldStart, onBegin: (mode: InputMode, at: WorldStart) => void): void {
     clear(this.root);
     this.root.classList.remove('hidden');
+    if (!Tracks.get().playing.includes('title')) Tracks.get().play('title', { loop: true, fade: 1200 });
     const back = el('div', 'title-back');
     back.style.backgroundImage = 'url(cards/title.jpg)';
     this.root.append(back, el('div', 'title-shade'));

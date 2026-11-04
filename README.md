@@ -82,7 +82,7 @@ railway up --service game --detach
 ## Layout
 
 - `src/ear/`: pitch math (pure, tested), microphone pitch detector (pitchy, McLeod method), piano keys.
-- `src/audio/`: Web Audio engine, ducking, synth, the sequenced area music, and sound effects. All audio is generated at runtime.
+- `src/audio/`: Web Audio engine, ducking, synth, the sequenced area music, and sound effects. The area music and every prompt are generated at runtime, so they follow each puzzle's key; four recorded pieces (`public/music`, made with Suno) play where nothing is asked: the title, the story cards and the map, the finale and the credits (`src/audio/tracks.ts`, checked by `scripts/musiccheck.mjs`).
 - `src/world/`: areas and maps (the ASCII maps are the single source for both the collision grid
   and the Blender-built scenery), puzzle model and runner, lessons, palettes.
 - `src/scenes3d/`: the Babylon.js app, the world (loading, camera, sun and shadows, doors, gates,

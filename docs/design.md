@@ -159,6 +159,13 @@ ear-training, not scenery, and follows the kingdom's rule that nothing moves unt
 The cues travel on a small bus (`src/audio/bandBus.ts`) from the sound to the world, timed on the
 audio clock, so the picture and the note land together.
 
+Recorded music (2026-11-04, Andre's Suno credits). Four pieces, all in C major and in the synth's own
+voices (celesta and flute, harp and pad, the band and a choir, a muted-trumpet trio): the title, the
+story cards and the map, the finale and the credits. They play only where no note is asked for, so a
+fixed key never sits under a question; the areas keep the synth, which follows each puzzle's key and
+layers up as doors open. The finale piece takes over from the synth once the kingdom's own song and
+its held chord have died away, and runs on under the results, the credits piece after it.
+
 The townsfolk (2026-11-04). Everyone on the ground turns to the singer when she comes within a few
 tiles and eases back to their resting facing when she goes, so no one is met from behind. Performers
 on a stage keep facing the audience. Each person acts (nods, claps, conducts, sings, snaps) while

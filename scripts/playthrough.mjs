@@ -279,8 +279,13 @@ await shot('13-jazz');
 await press('KeyM');
 await sleep(400);
 await shot('13-jazz-map');
+// The map: the story piece plays and the area music steps aside; both back the other way once it closes.
+const underMap = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, paused: window.__lkMusic.paused }));
+if (underMap.tracks.join() !== 'story' || !underMap.paused) errors.push(`under the map: ${JSON.stringify(underMap)}`);
 await press('Escape');
-await sleep(200);
+await sleep(900);
+const afterMap = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, paused: window.__lkMusic.paused }));
+if (afterMap.tracks.length || afterMap.paused) errors.push(`after the map: ${JSON.stringify(afterMap)}`);
 await solveDoor('jazz-club', { wrong: 2, shotName: '14-club' });
 await jump('jazz', 20, 15);
 await solveDoor('jazz-alley');
@@ -299,11 +304,13 @@ await shot('19-stage');
 await solveDoor('stage-song', { wrong: 1, shotName: '20-song' });
 await sleep(2500);
 await shot('21-kingdom');
-// The finale runs about sixteen seconds from the last note: lights, fireworks, then the results.
+// The finale runs about nineteen seconds from the last note: lights, fireworks, the recorded finale, then the results.
 for (let i = 0; i < 100; i++) { if (await page.evaluate(() => window.__lkResults === true)) break; await sleep(250); }
 if (!(await page.evaluate(() => window.__lkResults === true))) throw new Error('results screen never appeared');
 await sleep(900);
 await shot('22-results');
+const atResults = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId }));
+if (atResults.tracks.join() !== 'finale' || atResults.synth) errors.push(`at the results: ${JSON.stringify(atResults)}`);
 
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();
