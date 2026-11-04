@@ -294,10 +294,12 @@ await jump('jazz', 30, 15);
 await solveDoor('jazz-cellar', { shotName: '15-cellar' });
 await jump('jazz', 40, 15);
 await solveDoor('jazz-bandstand', { wrong: 3, shotName: '16-bandstand', click: true });
-await jump('jazz', 48, 15);
-// The band is on stage, and the quarter's piece plays on; the synth stays silent.
+// The Band Stand has just opened: the band's cued vamp is the celebration, the recorded piece stepped off.
+// (Checked before the jump, which reloads the page and with it the celebration.)
+await sleep(2500);
 const bandUp = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId }));
-if (bandUp.tracks.join() !== 'jazz' || bandUp.synth) errors.push(`band on stage: ${JSON.stringify(bandUp)}`);
+if (bandUp.tracks.length || bandUp.synth !== 'jazz:quiet:band') errors.push(`band celebration: ${JSON.stringify(bandUp)}`);
+await jump('jazz', 48, 15);
 await solveDoor('jazz-boss', { wrong: 1, shotName: '17-boss' });
 await sleep(1200);
 await shot('18-jazz-done');

@@ -58,6 +58,8 @@ const AO_KEY = 'listening-kingdom.ao';
 const CAM_OFFSET = new Vector3(0, 7.6, 9.2);
 const CAM_LOOK = new Vector3(0, 0.7, -1.2);
 /** Height of a stage deck (scripts/blender/build_area.py STAGE_H): people on stage tiles stand this much higher. */
+/** The band's celebration after the Band Stand: four rounds of the vamp. */
+const VAMP_MS = 32000;
 const STAGE_H = 0.24;
 /** The band: which model plays which part, and where over each one the sparks of a played note rise. */
 const BAND: Record<BandPart, { model: string; at: [number, number, number] }> = {
@@ -178,6 +180,8 @@ export class World {
   readonly extrasLog: string[] = [];
   /** The singer keeps singing until this time (after a door opens, during the finale). */
   private celebrateUntil = 0;
+  /** While this is ahead of now, the quarter's band plays its cued vamp instead of the recorded piece: the Band Stand's celebration. */
+  private vampUntil = 0;
   /** The finale walks the singer to centre stage. */
   private walkTo: { x: number; z: number } | null = null;
   private practice: PracticeDef | null = null;
@@ -954,6 +958,13 @@ export class World {
     }
     this.bloomAt(t0.x, t0.y, this.areaComplete() ? 1e9 : 14);
     this.doorMoment(d);
+    if (d.def.puzzle.id === 'jazz-bandstand') {
+      // The band's celebration: four rounds of their vamp, every note cued to the stage, then the quarter's piece again.
+      this.vampUntil = performance.now() + VAMP_MS;
+      this.later(VAMP_MS, () => {
+        if (!this.runner) this.resumeMusic();
+      });
+    }
     doorOpen(q.steps[0].refMidi);
     this.later(700, () => playSequence(q.steps.map((s) => s.targetMidi).concat([q.steps[0].targetMidi + 12]), { timbre: 'bell', duration: 0.3, gap: 0.14, gain: 0.45 }));
     this.endPuzzle(true);
@@ -1155,13 +1166,18 @@ export class World {
 
   /**
    * The area's recorded piece; once the song has been given back, the finale piece everywhere. The
-   * synth plays only where a piece's file is missing. (The quarter's band vamp, cued note by note to
-   * the players on stage, is the one thing the synth did that a recording cannot; it is switched off
-   * in favour of the quarter's piece. Decided 2026-11-04: recorded music everywhere.)
+   * synth plays in one place: the band's vamp, cued note by note to the players on stage, for a
+   * while after the Band Stand opens (Andre's call, 2026-11-04: the vamp as the door's celebration,
+   * the recording before and after). Otherwise it is only the fallback for a missing file.
    */
   private startMusic(): void {
     const band = this.area.id === 'jazz' && progress.solved.includes('jazz-bandstand');
     const synth = () => MusicPlayer.get().play(this.area.id, progress.finished, band);
+    if (band && performance.now() < this.vampUntil) {
+      Tracks.get().stopArea();
+      synth();
+      return;
+    }
     const piece = progress.finished ? 'finale' : AREA_PIECE[this.area.id];
     MusicPlayer.get().stop();
     void Tracks.get().playArea(piece).then((ok) => {

@@ -166,14 +166,17 @@ and the title), a market-morning guitar and glockenspiel piece (Tonic Town), a s
 trio (the credits) and a band-and-choir celebration (the finale, and every area once the song has
 been given back). Each area's piece is low-passed while the area is grey and opens as colour comes
 back, and steps aside, still running, whenever a door or lesson listens, so a fixed key never sits
-under a question. Andre's call: recorded music everywhere; the synth is only the fallback for a
-missing file. What that gave up is the quarter's band vamp, which was cued note by note to the
-players on stage; the band still plays the chord questions and the licks, which are synthesised in
-the puzzle's key. The finale piece takes over once the kingdom's own song and its held chord have
+under a question. Andre's call: recorded music everywhere, with one exception he chose after hearing
+both: when the Band Stand opens, the band's own vamp, cued note by note to the players on stage,
+is the door's celebration for four rounds (about half a minute), and then the quarter's piece
+returns. The chord questions and the licks stay synthesised in the puzzle's key. The finale piece takes over once the kingdom's own song and its held chord have
 died away, and runs on under the results, the credits piece after it.
 
 The townsfolk (2026-11-04). Everyone on the ground turns to the singer when she comes within a few
-tiles and eases back to their resting facing when she goes, so no one is met from behind. Performers
+tiles and eases back to their resting facing when she goes, so no one is met from behind. Come
+closer and they speak: a line in a bubble over their head, a different one each visit, about the
+thing their area teaches, short and a little daft; a new set once their own door is open
+(`src/world/talk.ts`). The quarter's band says nothing while frozen. Performers
 on a stage keep facing the audience. Each person acts (nods, claps, conducts, sings, snaps) while
 their own door is being sung and idles otherwise.
 
