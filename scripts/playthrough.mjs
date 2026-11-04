@@ -282,9 +282,9 @@ await shot('13-jazz');
 await press('KeyM');
 await sleep(400);
 await shot('13-jazz-map');
-// The map: the quarter's piece plays on under it, the synth silent until the band is on stage.
+// The map: the quarter's piece plays on under it.
 const underMap = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, quiet: window.__lkTracks.paused, synth: window.__lkMusic.trackId }));
-if (underMap.tracks.join() !== 'credits' || underMap.quiet || underMap.synth) errors.push(`under the map: ${JSON.stringify(underMap)}`);
+if (underMap.tracks.join() !== 'jazz' || underMap.quiet || underMap.synth) errors.push(`under the map: ${JSON.stringify(underMap)}`);
 await press('Escape');
 await sleep(900);
 await solveDoor('jazz-club', { wrong: 2, shotName: '14-club' });
@@ -295,9 +295,9 @@ await solveDoor('jazz-cellar', { shotName: '15-cellar' });
 await jump('jazz', 40, 15);
 await solveDoor('jazz-bandstand', { wrong: 3, shotName: '16-bandstand', click: true });
 await jump('jazz', 48, 15);
-// The band is on stage: its vamp is the synth's, and the recorded piece has stepped off.
+// The band is on stage, and the quarter's piece plays on; the synth stays silent.
 const bandUp = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId }));
-if (bandUp.tracks.length || bandUp.synth !== 'jazz:quiet:band') errors.push(`band on stage: ${JSON.stringify(bandUp)}`);
+if (bandUp.tracks.join() !== 'jazz' || bandUp.synth) errors.push(`band on stage: ${JSON.stringify(bandUp)}`);
 await solveDoor('jazz-boss', { wrong: 1, shotName: '17-boss' });
 await sleep(1200);
 await shot('18-jazz-done');

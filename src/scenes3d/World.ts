@@ -1154,18 +1154,15 @@ export class World {
   }
 
   /**
-   * The area's recorded piece, or the synth where the music is part of the play: the quarter's band
-   * once it is on stage, the stage once the song has been given back, and any area whose piece is missing.
+   * The area's recorded piece; once the song has been given back, the finale piece everywhere. The
+   * synth plays only where a piece's file is missing. (The quarter's band vamp, cued note by note to
+   * the players on stage, is the one thing the synth did that a recording cannot; it is switched off
+   * in favour of the quarter's piece. Decided 2026-11-04: recorded music everywhere.)
    */
   private startMusic(): void {
     const band = this.area.id === 'jazz' && progress.solved.includes('jazz-bandstand');
     const synth = () => MusicPlayer.get().play(this.area.id, progress.finished, band);
-    const piece = band || (this.area.id === 'stage' && progress.finished) ? null : AREA_PIECE[this.area.id];
-    if (!piece) {
-      Tracks.get().stopArea();
-      synth();
-      return;
-    }
+    const piece = progress.finished ? 'finale' : AREA_PIECE[this.area.id];
     MusicPlayer.get().stop();
     void Tracks.get().playArea(piece).then((ok) => {
       if (!ok && !this.disposed && !this.runner) synth();

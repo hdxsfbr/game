@@ -12,12 +12,15 @@ import { AudioEngine } from './engine';
  * area is grey and opens as colour comes back. Starting a piece before the player's first gesture
  * is refused by the browser; the title retries on the first click or key.
  */
-export type TrackName = 'title' | 'story' | 'finale' | 'credits' | 'town';
+export type TrackName = 'title' | 'story' | 'finale' | 'credits' | 'hub' | 'valley' | 'town' | 'jazz';
 
-/** Which piece each area plays. A missing file falls back to the synth. */
-export const AREA_PIECE: Record<string, TrackName> = { hub: 'story', valley: 'title', town: 'town', jazz: 'credits', stage: 'story' };
+/**
+ * Which piece each area plays. One each; the valley's is the title waltz and the stage's the story
+ * underscore, since the Suno credits ran out before those two. A missing file falls back to the synth.
+ */
+export const AREA_PIECE: Record<string, TrackName> = { hub: 'hub', valley: 'title', town: 'town', jazz: 'jazz', stage: 'story' };
 
-const LEVEL: Record<TrackName, number> = { title: 0.55, story: 0.4, finale: 0.7, credits: 0.5, town: 0.5 };
+const LEVEL: Record<TrackName, number> = { title: 0.55, story: 0.4, finale: 0.7, credits: 0.5, hub: 0.5, valley: 0.5, town: 0.5, jazz: 0.5 };
 /** An area piece sits lower than the same piece on the title or the results. */
 const AREA_LEVEL = 0.75;
 

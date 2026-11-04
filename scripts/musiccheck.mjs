@@ -38,24 +38,24 @@ await expect('under the hub card', { tracks: ['story'], synth: '' });
 
 await page.keyboard.press('Space');
 await sleep(1500);
-await expect('after the card', { tracks: ['story'], area: 'story', synth: '' });
+await expect('after the card', { tracks: ['hub'], area: 'hub', synth: '' });
 
 await page.keyboard.press('KeyM');
 await sleep(900);
-await expect('under the map', { tracks: ['story'], quiet: false });
+await expect('under the map', { tracks: ['hub'], quiet: false });
 await page.keyboard.press('KeyM');
 await sleep(900);
-await expect('after the map', { tracks: ['story'], quiet: false });
+await expect('after the map', { tracks: ['hub'], quiet: false });
 
 // At the hearth door: the piece steps aside under the prompt and comes back after.
 await page.evaluate(() => window.__lk.player.setPosition(7.5, 8.5));
 await sleep(300);
 await page.keyboard.press('Space');
 await sleep(1500);
-await expect('under a prompt', { tracks: ['story'], quiet: true, prompt: true });
+await expect('under a prompt', { tracks: ['hub'], quiet: true, prompt: true });
 await page.keyboard.press('Escape');
 await sleep(1500);
-await expect('after the prompt', { tracks: ['story'], quiet: false, synth: '' });
+await expect('after the prompt', { tracks: ['hub'], quiet: false, synth: '' });
 
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();
