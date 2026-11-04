@@ -22,6 +22,7 @@ export class LessonOverlay {
   onHear: ((page: LessonPage) => void) | null = null;
   onDrill: (() => void) | null = null;
   onLeave: (() => void) | null = null;
+  onGuide: (() => void) | null = null;
 
   constructor(ui: HTMLDivElement) {
     this.root = el('div', 'lesson hidden');
@@ -33,6 +34,8 @@ export class LessonOverlay {
     top.append(this.titleEl, this.pageNo, this.dots);
     const leave = el('button', 'btn-small lesson-leave', 'Esc: leave', { type: 'button' });
     leave.addEventListener('click', () => this.onLeave?.());
+    const guide = el('button', 'btn-small lesson-guide', 'G: the guide', { type: 'button', id: 'lesson-guide' });
+    guide.addEventListener('click', () => this.onGuide?.());
     const main = el('div', 'lesson-main');
     this.heading = el('h3', '', '');
     this.body = el('p', '', '');
@@ -47,7 +50,7 @@ export class LessonOverlay {
     this.nextBtn = el('button', 'btn-small', 'next  →', { type: 'button' });
     this.nextBtn.addEventListener('click', () => this.go(1));
     foot.append(this.backBtn, this.drillBtn, this.nextBtn);
-    this.root.append(top, leave, main, foot);
+    this.root.append(top, leave, guide, main, foot);
     ui.appendChild(this.root);
   }
 

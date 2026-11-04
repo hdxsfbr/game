@@ -1,0 +1,43 @@
+{
+  "hub": [
+    "Hi. This bench is where you learn how the kingdom listens. Nothing here costs you anything.",
+    "Every door hums a note. A note is just a steady sound at one height. Here is one.",
+    "Higher notes sound thinner, lower notes sound fuller. The same note, then a higher one, then back.",
+    "To answer with your voice, hum one steady note and hold it for about a second. The marker shows where your note lands on these keys.",
+    "To answer with the keys, the letters A, S, D, F, G, H, J and K are the white keys from the left. Press one, then Enter.",
+    "A door is happy when your note lands on the same key as its note. Let's try. A note plays, and you give it back."
+  ],
+  "valley": [
+    "An interval is the distance between two notes. Every door in the valley hums a note, then asks for another a certain way above it.",
+    "Here is a note, and the same note higher. That jump is an octave. Somewhere over the rainbow starts with it: some, where.",
+    "This one is a fifth. Open and strong. Twinkle twinkle: the first two different notes.",
+    "A fourth is one step short of the fifth, and it sounds like an arrival. Here comes the bride.",
+    "A major third is bright. Oh when the saints. A minor third is one step closer, and darker. Greensleeves.",
+    "When a door names a distance, hear its note, then sing the second note that far above it. The keys show how far. Count them.",
+    "Let's drill. A note, then a distance. Take your time. Nothing here costs a thing."
+  ],
+  "town": [
+    "In the town, every tune comes home to one note. The home note is called doh, or degree one.",
+    "First the bell plays a cadence. A few chords that tell your ear where home is. Listen for it.",
+    "Then the family climbs from home. Doh, re, mi, fa, sol, la, ti, and doh again. Eight steps, home at both ends.",
+    "Some notes rest, and some lean. Hear ti lean up to doh. And hear fa lean down to mi.",
+    "When a door asks for degree three, find home in your ear, then climb. One, two, three.",
+    "Let's drill. The cadence plays, a degree is named, and you sing it or press its key."
+  ],
+  "jazz": [
+    "A chord is several notes played together. Four kinds live in the quarter, and each one has a mood.",
+    "A major seventh. Bright, dreamy, at rest.",
+    "A minor seventh. Softer, a little sad, also at rest.",
+    "A dominant seventh. Bluesy and restless. It wants to go somewhere.",
+    "A half diminished. Uneasy, like a held breath.",
+    "Two things set the mood. The third note: major is bright, minor is dark. Hear them side by side.",
+    "And the top note, the seventh. A major seventh stays put. A flat seventh pulls. Side by side again.",
+    "The doorman asks for a chord's mood. Later doors ask you to sing one note out of a chord. Let's drill the moods first."
+  ],
+  "stage": [
+    "The song is fifteen notes. The kingdom plays it once, and you sing it back, one note at a time, with the band under you.",
+    "Hear it as degrees of the key. It starts on home, climbs, and comes back down. Here it is.",
+    "Sing the tune in your head before you sing it out loud. If a note slips, the band plays the tune up to that note again, slower.",
+    "Let's rehearse with a short tune first."
+  ]
+}

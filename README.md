@@ -82,6 +82,7 @@ railway up --service game --detach
 ## Layout
 
 - `src/ear/`: pitch math (pure, tested), microphone pitch detector (pitchy, McLeod method), piano keys.
+- `src/overlay/GuideView.ts`, `src/world/guides.ts`, `src/world/narration.json`: the guided walkthrough at each bench for players with no music background: a narrated step at a time in Andre's voice (`public/narration`, made by `scripts/narrate.py` with Chatterbox from the JSON), each followed by its example sounded and lit on a piano. Shown the first time at a bench; G from the pages after that.
 - `src/audio/`: Web Audio engine, ducking, synth, the sequenced area music, and sound effects. Every prompt is generated at runtime, so it follows each puzzle's key. The background music is recorded pieces (`public/music`, made with Suno; `src/audio/tracks.ts`): one per area, low-passed while the area is grey and opening with its colour, stepping aside whenever a door or lesson listens; the title, the story cards, the finale and the credits have theirs. Once the song is given back, the finale piece plays everywhere. The synth music (`src/audio/music.ts`) plays for half a minute after the Band Stand opens, the band's cued vamp as the door's celebration, and is otherwise only the fallback for a missing file. `scripts/musiccheck.mjs` checks the transitions headlessly.
 - `src/world/`: areas and maps (the ASCII maps are the single source for both the collision grid
   and the Blender-built scenery), puzzle model and runner, lessons, palettes.

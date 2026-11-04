@@ -172,6 +172,15 @@ is the door's celebration for four rounds (about half a minute), and then the qu
 returns. The chord questions and the licks stay synthesised in the puzzle's key. The finale piece takes over once the kingdom's own song and its held chord have
 died away, and runs on under the results, the credits piece after it.
 
+The bench guide (2026-11-04, for players with no music background). The first time at a bench, a
+guided walkthrough instead of the text pages: a step at a time, narrated in Andre's own voice (a
+Chatterbox clone, default model, from `src/world/narration.json`), the words also shown as a caption,
+and each step's example sounded and lit on a large piano as it plays: one note, a higher one, an
+octave, a fifth, the cadence, the climb from doh, the four chord moods, the song. Steps follow on by
+themselves; the arrows move by hand, Space says one again, Enter begins the drill, P opens the text
+pages, which stay as the reference (G opens the guide from them). The pages' own Hear buttons use the
+same demo player.
+
 The townsfolk (2026-11-04). Everyone on the ground turns to the singer when she comes within a few
 tiles and eases back to their resting facing when she goes, so no one is met from behind. Come
 closer and they speak: a line in a bubble over their head, a different one each visit, about the

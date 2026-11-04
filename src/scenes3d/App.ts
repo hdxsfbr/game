@@ -1,4 +1,5 @@
 import { Engine } from '@babylonjs/core/Engines/engine';
+import { GuideView } from '../overlay/GuideView';
 import { Hud } from '../overlay/Hud';
 import { LessonOverlay } from '../overlay/LessonOverlay';
 import { MapOverlay } from '../overlay/MapOverlay';
@@ -49,6 +50,7 @@ export class App {
       panel: new PuzzlePanel(ui, PALETTES.hub),
       mapView: new MapOverlay(ui),
       lessonView: new LessonOverlay(ui),
+      guideView: new GuideView(ui),
       storyCard: new StoryCard(ui),
     };
     this.title = new Title(ui);

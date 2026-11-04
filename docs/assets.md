@@ -38,6 +38,7 @@ pre-made packs are used. Dates are when the asset in the repo was made.
 | Area music: one sequenced track per area, three layers gated by the area's life | Code-sequenced, synthesised live | `src/audio/music.ts` |
 | Footsteps, door, gate, panel, click | Filtered noise and short tones | `src/audio/sfx.ts` |
 | Lesson demos (reference-song openings) | Note lists with per-note beats, synthesised | `src/world/lessons.ts` |
+| Bench guide narration, 31 clips (`public/narration/*.mp3`) | Chatterbox TTS, default model, Andre's voice reference (`~/code/chatterbox-play/voices/andre_voice_clean_ref.wav`), exaggeration 0.45, cfg 0.45; ends trimmed and encoded at 64 kbps by `scripts/narrate.py`, which regenerates only lines whose text changed in `src/world/narration.json`. | `public/narration/` |
 | Recorded pieces (`public/music/*.mp3`): hub, title (also the Valley), town, jazz, story (cards and the Stage), finale (also everywhere once the song is given back), credits | Suno, instrumental, C major; cover art stripped with ffmpeg. Played by `src/audio/tracks.ts`, low-passed with the area's grey, stepped aside under every prompt. | `public/music/` |
 
 ## Process

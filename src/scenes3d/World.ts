@@ -22,9 +22,10 @@ import { AudioEngine } from '../audio/engine';
 import { MusicPlayer } from '../audio/music';
 import { AREA_PIECE, Tracks } from '../audio/tracks';
 import { doorOpen, footstep, gateLocked, panelOpen } from '../audio/sfx';
-import { playCadence, playChord, playNote, playSequence } from '../audio/synth';
+import { playChord, playNote, playSequence } from '../audio/synth';
 import { hzToMidi } from '../ear/pitchMath';
 import { pipeForCode } from '../ear/pipes';
+import type { GuideView } from '../overlay/GuideView';
 import type { Hud } from '../overlay/Hud';
 import type { LessonOverlay } from '../overlay/LessonOverlay';
 import type { MapOverlay } from '../overlay/MapOverlay';
@@ -34,7 +35,9 @@ import { mic } from '../overlay/Title';
 import { el } from '../overlay/dom';
 import { VOICE_AFTER_QUIET, VOICE_DRILL_CAP, VOICE_MAX, progress, saveProgress } from '../state';
 import { AREAS, type AreaDef, type DoorDef, type GateDef, type NpcDef, type PracticeDef } from '../world/areas';
-import { LESSONS, type Demo, type LessonPage } from '../world/lessons';
+import { GUIDES } from '../world/guides';
+import { LESSONS, type LessonPage } from '../world/lessons';
+import { playDemo } from '../audio/demo';
 import { talkFor } from '../world/talk';
 import { GREY, PALETTES, lerpColor, type Palette } from '../world/palette';
 import { PuzzleRunner } from '../world/puzzleRunner';
@@ -94,6 +97,7 @@ export interface Overlays {
   panel: PuzzlePanel;
   mapView: MapOverlay;
   lessonView: LessonOverlay;
+  guideView: GuideView;
   storyCard: StoryCard;
 }
 
@@ -142,6 +146,7 @@ export class World {
   runner: PuzzleRunner | null = null;
   readonly panel: PuzzlePanel;
   readonly storyCard: StoryCard;
+  readonly guideView: GuideView;
   ready = false;
   /** Per-tile life, 0 (grey) to 1 (in colour), row-major. Read by the colour pass. */
   readonly life: Float32Array;
@@ -224,6 +229,7 @@ export class World {
     this.mapView = overlays.mapView;
     this.lessonView = overlays.lessonView;
     this.storyCard = overlays.storyCard;
+    this.guideView = overlays.guideView;
     this.bubble = el('div', 'bubble hidden', 'Space');
     overlays.ui.appendChild(this.bubble);
     this.talk = el('div', 'talk hidden', '');
@@ -378,6 +384,14 @@ export class World {
     this.lessonView.onHear = (page) => this.playDemo(page);
     this.lessonView.onDrill = () => this.startDrill();
     this.lessonView.onLeave = () => this.closeLesson();
+    this.lessonView.onGuide = () => this.openGuide();
+    this.guideView.setPalette(this.palette);
+    this.guideView.onDrill = () => this.startDrill();
+    this.guideView.onLeave = () => this.closeLesson();
+    this.guideView.onPages = () => {
+      this.guideView.hide();
+      this.lessonView.show(LESSONS[this.practice!.lesson]);
+    };
     this.hud.show(this.area.name);
     if (!progress.cardsSeen.includes(this.area.id)) {
       const ok = await this.storyCard.show(this.area.id, this.area.name);
@@ -473,7 +487,7 @@ export class World {
   }
 
   get inputLocked(): boolean {
-    return !!this.runner || this.transitioning || this.mapView.visible || this.lessonView.visible || this.storyCard.visible;
+    return !!this.runner || this.transitioning || this.mapView.visible || this.lessonView.visible || this.guideView.visible || this.storyCard.visible;
   }
 
   // ---------- colour ----------
@@ -616,41 +630,32 @@ export class World {
     // The music steps aside at the bench as it does at a door, so the examples are heard alone.
     MusicPlayer.get().setPaused(true);
     Tracks.get().setPaused(true);
-    this.lessonView.show(lesson);
     this.hud.setHint('');
+    // The first time at a bench, the guided walkthrough; the pages after that, with the guide a key away.
+    if (GUIDES[p.lesson] && !progress.guidesSeen.includes(p.lesson)) this.openGuide();
+    else this.lessonView.show(lesson);
   }
 
-  /** Leave the lesson pages without a drill: the music comes back. */
+  private openGuide(): void {
+    const p = this.practice;
+    if (!p || !GUIDES[p.lesson]) return;
+    if (!progress.guidesSeen.includes(p.lesson)) {
+      progress.guidesSeen.push(p.lesson);
+      saveProgress(progress);
+    }
+    this.lessonView.hide();
+    this.guideView.show(p.lesson, LESSONS[p.lesson].title, GUIDES[p.lesson]);
+  }
+
+  /** Leave the lesson pages or the guide without a drill: the music comes back. */
   private closeLesson(): void {
     this.lessonView.hide();
+    this.guideView.hide();
     if (!this.runner) this.resumeMusic();
   }
 
   private playDemo(page: LessonPage): void {
-    const d: Demo | undefined = page.demo;
-    if (!d) return;
-    const engine = AudioEngine.get();
-    const base = 60;
-    let t = engine.now + 0.06;
-    if (d.cadence) t = playCadence(base, { at: t, speed: 1 }) + 0.3;
-    if (d.notes) {
-      const beat = d.gap ?? 0.42;
-      d.notes.forEach((o, i) => {
-        const len = (d.beats?.[i] ?? 1) * beat;
-        playNote(base + o, { timbre: d.timbre ?? 'pipe', at: t, duration: Math.min(1.4, len * 0.9), gain: 0.5 });
-        t += len;
-      });
-    }
-    if (d.chord) t = playChord(d.chord.map((o) => base + o), { timbre: d.timbre ?? 'chord', at: t, duration: 1.4, gain: 0.8 });
-    if (d.chords) {
-      // Each chord stops, and a short rest passes, before the next one starts.
-      const gap = d.gap ?? 1.1;
-      for (const c of d.chords) {
-        playNote(base - 24 + c[0], { timbre: 'bass', at: t, duration: gap - 0.35, gain: 0.22 });
-        playChord(c.map((o) => base + o), { timbre: d.timbre ?? 'chord', at: t, duration: gap - 0.35, gain: 0.8 });
-        t += gap;
-      }
-    }
+    if (page.demo) playDemo(page.demo);
   }
 
   private startDrill(): void {
@@ -658,6 +663,7 @@ export class World {
     if (!p) return;
     const lesson = LESSONS[p.lesson];
     this.lessonView.hide();
+    this.guideView.hide();
     void this.startPuzzle(null, lesson.drill);
   }
 
@@ -705,9 +711,19 @@ export class World {
       if (ev.code === 'KeyM' || ev.code === 'Escape' || ev.code === 'Space') this.closeMap();
       return;
     }
+    if (this.guideView.visible) {
+      if (ev.code === 'Escape') this.closeLesson();
+      else if (ev.code === 'Space') this.guideView.play(this.guideView.step);
+      else if (ev.code === 'ArrowRight' || ev.code === 'KeyD') this.guideView.go(1);
+      else if (ev.code === 'ArrowLeft' || ev.code === 'KeyA') this.guideView.go(-1);
+      else if (ev.code === 'Enter') this.startDrill();
+      else if (ev.code === 'KeyP') this.guideView.onPages?.();
+      return;
+    }
     if (this.lessonView.visible) {
       if (ev.code === 'Escape') this.closeLesson();
       else if (ev.code === 'Space') this.lessonView.hear();
+      else if (ev.code === 'KeyG') this.openGuide();
       else if (ev.code === 'ArrowRight' || ev.code === 'KeyD') this.lessonView.go(1);
       else if (ev.code === 'ArrowLeft' || ev.code === 'KeyA') this.lessonView.go(-1);
       else if (ev.code === 'Enter') this.startDrill();
