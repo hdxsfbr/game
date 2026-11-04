@@ -944,10 +944,13 @@ body {
   border-radius: 50%;
   background: rgba(21, 20, 26, 0.35);
   border: 2px solid rgba(240, 236, 228, 0.35);
-  pointer-events: auto;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+}
+/* An id outranks a class, so the overlay's pointer-events: none is lifted here by id too. */
+#ui > .joy {
+  pointer-events: auto;
 }
 .touch .joy {
   display: block;
