@@ -17,7 +17,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const state = () => page.evaluate(() => ({ tracks: window.__lkTracks ? window.__lkTracks.playing : [], synth: window.__lkMusic ? window.__lkMusic.trackId : '', paused: window.__lkMusic ? window.__lkMusic.paused : false }));
+const state = () => page.evaluate(() => ({ tracks: window.__lkTracks ? window.__lkTracks.playing : [], area: window.__lkTracks ? window.__lkTracks.area : null, quiet: window.__lkTracks ? window.__lkTracks.paused : false, synth: window.__lkMusic ? window.__lkMusic.trackId : '', prompt: !!(window.__lk && window.__lk.runner) }));
 const expect = async (label, want) => {
   const got = await state();
   const bad = Object.entries(want).filter(([k, v]) => JSON.stringify(got[k]) !== JSON.stringify(v));
@@ -38,21 +38,24 @@ await expect('under the hub card', { tracks: ['story'], synth: '' });
 
 await page.keyboard.press('Space');
 await sleep(1500);
-await expect('after the card', { tracks: [], synth: 'hub:quiet' });
+await expect('after the card', { tracks: ['story'], area: 'story', synth: '' });
 
 await page.keyboard.press('KeyM');
 await sleep(900);
-await expect('under the map', { tracks: ['story'], paused: true });
+await expect('under the map', { tracks: ['story'], quiet: false });
 await page.keyboard.press('KeyM');
 await sleep(900);
-await expect('after the map', { tracks: [], paused: false });
+await expect('after the map', { tracks: ['story'], quiet: false });
 
-// At the hearth door: nothing recorded under the prompt.
-await page.evaluate(() => window.__lk.player.setPosition(8.5, 6.5));
+// At the hearth door: the piece steps aside under the prompt and comes back after.
+await page.evaluate(() => window.__lk.player.setPosition(7.5, 8.5));
 await sleep(300);
 await page.keyboard.press('Space');
 await sleep(1500);
-await expect('under a prompt', { tracks: [] });
+await expect('under a prompt', { tracks: ['story'], quiet: true, prompt: true });
+await page.keyboard.press('Escape');
+await sleep(1500);
+await expect('after the prompt', { tracks: ['story'], quiet: false, synth: '' });
 
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();

@@ -160,11 +160,15 @@ The cues travel on a small bus (`src/audio/bandBus.ts`) from the sound to the wo
 audio clock, so the picture and the note land together.
 
 Recorded music (2026-11-04, Andre's Suno credits). Four pieces, all in C major and in the synth's own
-voices (celesta and flute, harp and pad, the band and a choir, a muted-trumpet trio): the title, the
-story cards and the map, the finale and the credits. They play only where no note is asked for, so a
-fixed key never sits under a question; the areas keep the synth, which follows each puzzle's key and
-layers up as doors open. The finale piece takes over from the synth once the kingdom's own song and
-its held chord have died away, and runs on under the results, the credits piece after it.
+voices: a music-box waltz (the title, and the Valley), a harp-and-pad underscore (the story cards,
+Hearthstone and the Silent Stage), a late-night trio (the Jazz Quarter before its band is on stage,
+and the credits), a market-morning guitar and glockenspiel piece (Tonic Town) and a band-and-choir
+celebration (the finale). Each area's piece is low-passed while the area is grey and opens as colour comes back, and steps
+aside, still running, whenever a door or lesson listens, so a fixed key never sits under a question.
+The synth keeps the places where the music is part of the play: the quarter's band vamp once the
+Band Stand is open, cued to the players on stage, and the stage's song once it has been given back.
+The finale piece takes over once the kingdom's own song and its held chord have died away, and runs
+on under the results, the credits piece after it.
 
 The townsfolk (2026-11-04). Everyone on the ground turns to the singer when she comes within a few
 tiles and eases back to their resting facing when she goes, so no one is met from behind. Performers

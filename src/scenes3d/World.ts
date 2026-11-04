@@ -20,7 +20,7 @@ import '@babylonjs/loaders/glTF';
 import { type BandCue, type BandPart, bandCue, setBandListener } from '../audio/bandBus';
 import { AudioEngine } from '../audio/engine';
 import { MusicPlayer } from '../audio/music';
-import { Tracks } from '../audio/tracks';
+import { AREA_PIECE, Tracks } from '../audio/tracks';
 import { doorOpen, footstep, gateLocked, panelOpen } from '../audio/sfx';
 import { playCadence, playChord, playNote, playSequence } from '../audio/synth';
 import { hzToMidi } from '../ear/pitchMath';
@@ -379,11 +379,12 @@ export class World {
       Tracks.get().play('story', { loop: true, fade: 600 });
       this.storyCard.onDone = () => {
         this.storyCard.onDone = null;
-        Tracks.get().stop('story', 900);
         if (!this.disposed) this.startMusic();
+        Tracks.get().stop('story', 900);
       };
     } else this.startMusic();
     MusicPlayer.get().setLife(this.areaLife());
+    Tracks.get().setLife(this.areaLife());
     setBandListener((c) => this.onBandCue(c));
 
     window.addEventListener('keydown', this.onKey);
@@ -603,6 +604,7 @@ export class World {
     panelOpen();
     // The music steps aside at the bench as it does at a door, so the examples are heard alone.
     MusicPlayer.get().setPaused(true);
+    Tracks.get().setPaused(true);
     this.lessonView.show(lesson);
     this.hud.setHint('');
   }
@@ -668,15 +670,17 @@ export class World {
 
   // ---------- puzzles ----------
 
-  /** The map, with the story piece under it and the area music stepped aside. */
+  /** The map. The area's piece plays on under it; where the synth is playing instead, the story piece takes its place. */
   private openMap(): void {
     this.mapView.show(this.area);
+    if (Tracks.get().area) return;
     MusicPlayer.get().setPaused(true);
     Tracks.get().play('story', { loop: true, fade: 500 });
   }
 
   private closeMap(): void {
     this.mapView.hide();
+    if (Tracks.get().area) return;
     Tracks.get().stop('story', 600);
     if (!this.runner) MusicPlayer.get().setPaused(false);
   }
@@ -759,6 +763,7 @@ export class World {
     this.runner = runner;
     if (d?.def.puzzle.id === 'jazz-bandstand' && !d.solved) this.toast('The band picks up their instruments.', 2600);
     MusicPlayer.get().setPaused(true);
+    Tracks.get().setPaused(true);
     panelOpen();
     this.panel.onSign = (q) => void runner.attemptChoice(q);
     this.panel.onKey = (midi) => this.playPipe(midi);
@@ -869,6 +874,7 @@ export class World {
     // Once the held chord has died away, the recorded finale takes over from the synth and carries on under the results.
     this.later(msTo(tEnd) + 4000, () => {
       MusicPlayer.get().stop();
+      Tracks.get().stopArea(1500);
       Tracks.get().play('finale', { fade: 1500, then: 'credits' });
     });
     this.later(msTo(tEnd) + 12000, () => {
@@ -1147,14 +1153,30 @@ export class World {
     bandCue('drums', t0 + 0.36, 0.1, true);
   }
 
+  /**
+   * The area's recorded piece, or the synth where the music is part of the play: the quarter's band
+   * once it is on stage, the stage once the song has been given back, and any area whose piece is missing.
+   */
   private startMusic(): void {
-    MusicPlayer.get().play(this.area.id, progress.finished, this.area.id === 'jazz' && progress.solved.includes('jazz-bandstand'));
+    const band = this.area.id === 'jazz' && progress.solved.includes('jazz-bandstand');
+    const synth = () => MusicPlayer.get().play(this.area.id, progress.finished, band);
+    const piece = band || (this.area.id === 'stage' && progress.finished) ? null : AREA_PIECE[this.area.id];
+    if (!piece) {
+      Tracks.get().stopArea();
+      synth();
+      return;
+    }
+    MusicPlayer.get().stop();
+    void Tracks.get().playArea(piece).then((ok) => {
+      if (!ok && !this.disposed && !this.runner) synth();
+    });
   }
 
   /** Music back after a puzzle or lesson; in the quarter it may now be the band's vamp. */
   private resumeMusic(): void {
     this.startMusic();
     MusicPlayer.get().setPaused(false);
+    Tracks.get().setPaused(false);
   }
 
   /** The moment a door opens: a shower of sparks from the frame, the camera leans in, the singer holds the note, the music swells. */
@@ -1357,6 +1379,7 @@ export class World {
     this.updateNpcs(dt, timeMs);
     this.updateColour(dt * 1000, timeMs);
     MusicPlayer.get().setLife(this.areaLife());
+    Tracks.get().setLife(this.areaLife());
     this.placeCamera(Math.min(1, dt * 6));
   }
 

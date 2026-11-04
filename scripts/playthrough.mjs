@@ -226,11 +226,14 @@ const vh = await practise('02b-lesson');
 if (vh !== 5) throw new Error('hub drill should leave a full voice at 5, got ' + vh);
 await jump('hub', 8, 8);
 
-// Walk through the open door to the valley.
+// Walk through the open door to the valley: the key stays down until the valley loads, since the
+// headless frame rate sets the walking speed.
 await page.keyboard.down('ArrowLeft');
-await sleep(2800);
-await page.keyboard.up('ArrowLeft');
-await waitFor((st) => st.area === 'valley', 8000, 'walked to valley');
+try {
+  await waitFor((st) => st.area === 'valley', 10000, 'walked to valley');
+} finally {
+  await page.keyboard.up('ArrowLeft');
+}
 await sleep(900);
 await shot('04a-valley-card');
 await dismissCard();
@@ -279,13 +282,11 @@ await shot('13-jazz');
 await press('KeyM');
 await sleep(400);
 await shot('13-jazz-map');
-// The map: the story piece plays and the area music steps aside; both back the other way once it closes.
-const underMap = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, paused: window.__lkMusic.paused }));
-if (underMap.tracks.join() !== 'story' || !underMap.paused) errors.push(`under the map: ${JSON.stringify(underMap)}`);
+// The map: the quarter's piece plays on under it, the synth silent until the band is on stage.
+const underMap = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, quiet: window.__lkTracks.paused, synth: window.__lkMusic.trackId }));
+if (underMap.tracks.join() !== 'credits' || underMap.quiet || underMap.synth) errors.push(`under the map: ${JSON.stringify(underMap)}`);
 await press('Escape');
 await sleep(900);
-const afterMap = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, paused: window.__lkMusic.paused }));
-if (afterMap.tracks.length || afterMap.paused) errors.push(`after the map: ${JSON.stringify(afterMap)}`);
 await solveDoor('jazz-club', { wrong: 2, shotName: '14-club' });
 await jump('jazz', 20, 15);
 await solveDoor('jazz-alley');
@@ -294,6 +295,9 @@ await solveDoor('jazz-cellar', { shotName: '15-cellar' });
 await jump('jazz', 40, 15);
 await solveDoor('jazz-bandstand', { wrong: 3, shotName: '16-bandstand', click: true });
 await jump('jazz', 48, 15);
+// The band is on stage: its vamp is the synth's, and the recorded piece has stepped off.
+const bandUp = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId }));
+if (bandUp.tracks.length || bandUp.synth !== 'jazz:quiet:band') errors.push(`band on stage: ${JSON.stringify(bandUp)}`);
 await solveDoor('jazz-boss', { wrong: 1, shotName: '17-boss' });
 await sleep(1200);
 await shot('18-jazz-done');
