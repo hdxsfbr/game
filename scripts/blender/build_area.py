@@ -326,6 +326,12 @@ class Area:
             elif e['kind'] == 'gate':
                 for i, t in enumerate(e['tiles']):
                     self.gate_tiles[t] = (e, i)
+        self.people = {tuple(e['tile']) for e in self.entities if e['kind'] in ('npc', 'prop')}
+
+    def person_behind(self, x, y, seg):
+        """Whether someone stands in the lane just north of wall block (x..x+seg, y): the camera looks north,
+        so a tall block there would hide them from the chest down."""
+        return any((xx, yy) in self.people for xx in range(x, x + seg) for yy in (y - 1, y - 2))
 
     def at(self, x, y):
         if y < 0 or y >= self.h or x < 0 or x >= len(self.rows[y]):
@@ -476,7 +482,7 @@ class Area:
         faces = sorted({side for xx in range(x, x + seg) for side in self.street_faces(xx, y)})
         # The camera looks north, so a block whose only open face is its north one shows nothing but its
         # roof and would hide the lane behind it: those stay single-storey. Free-standing rows stay under two.
-        storey = 0 if faces == [1] else self.pick(x, y, 31, 2 if len(faces) == 2 else 3, prev.get('storey'))
+        storey = 0 if faces == [1] or self.person_behind(x, y, seg) else self.pick(x, y, 31, 2 if len(faces) == 2 else 3, prev.get('storey'))
         tint = self.pick(x, y, 32, 4, prev.get('tint'))
         roof_k = self.pick(x, y, 33, 4, prev.get('roof'))
         shape = self.pick(x, y, 34, 4, prev.get('shape'))
@@ -557,7 +563,7 @@ class Area:
         prev = prev or {}
         faces = sorted({side for xx in range(x, x + seg) for side in self.street_faces(xx, y)})
         # As in the town: blocks south of a lane stay low so they do not hide it from the camera.
-        storey = 0 if faces == [1] else self.pick(x, y, 51, 2 if len(faces) == 2 else 3, prev.get('storey'))
+        storey = 0 if faces == [1] or self.person_behind(x, y, seg) else self.pick(x, y, 51, 2 if len(faces) == 2 else 3, prev.get('storey'))
         tint = self.pick(x, y, 52, 4, prev.get('tint'))
         kind = self.pick(x, y, 53, 3, prev.get('kind'))
         hgt = (1.4, 1.75, 2.1)[storey] + 0.1 * hash2(x, y, 54)

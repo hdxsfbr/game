@@ -273,7 +273,7 @@ export const VALLEY: AreaDef = {
         sharedRef: true,
       },
     },
-    { kind: 'npc', tile: { x: 9, y: 18 }, model: 'shepherd', face: 'west', door: 'valley-serpent' },
+    { kind: 'npc', tile: { x: 9, y: 18 }, model: 'shepherd', face: 'south', door: 'valley-serpent' },
     { kind: 'fragment', tile: { x: 7, y: 25 }, id: 'fragment-valley' },
     { kind: 'exit', tiles: [{ x: 7, y: 27 }], to: 'hub', at: { x: 14, y: 8 } },
   ],
@@ -435,8 +435,8 @@ export const TOWN: AreaDef = {
     { kind: 'npc', tile: { x: 24, y: 24 }, model: 'stallkeeper-2', face: 'west', door: 'town-stall-mi' },
     { kind: 'npc', tile: { x: 20, y: 5 }, model: 'mayor', face: 'east', door: 'town-choir' },
     { kind: 'npc', tile: { x: 24, y: 5 }, model: 'chorister', face: 'west', door: 'town-choir' },
-    { kind: 'npc', tile: { x: 25, y: 6 }, model: 'chorister-2', face: 'west', door: 'town-choir' },
-    { kind: 'prop', tile: { x: 25, y: 27 }, model: 'bell-tower' },
+    { kind: 'npc', tile: { x: 25, y: 5 }, model: 'chorister-2', face: 'west', door: 'town-choir' },
+    { kind: 'prop', tile: { x: 25, y: 27 }, model: 'bell-tower', scale: 3.2 },
     { kind: 'fragment', tile: { x: 22, y: 2 }, id: 'fragment-town' },
     { kind: 'exit', tiles: [{ x: 24, y: 2 }], to: 'hub', at: { x: 14, y: 8 } },
   ],
@@ -559,7 +559,7 @@ export const JAZZ: AreaDef = {
         refRange: ROOTS,
       },
     },
-    { kind: 'npc', tile: { x: 10, y: 14 }, model: 'doorman', face: 'east', door: 'jazz-club' },
+    { kind: 'npc', tile: { x: 10, y: 14 }, model: 'doorman', face: 'south', door: 'jazz-club' },
     // The band plays on a stage in the square in front of the band stand, facing the street.
     // Written out tile by tile: scripts/blender/build_area.py reads these lists with a regex.
     { kind: 'stage', tiles: [{ x: 34, y: 14 }, { x: 35, y: 14 }, { x: 36, y: 14 }, { x: 37, y: 14 }, { x: 38, y: 14 }, { x: 39, y: 14 }, { x: 40, y: 14 }, { x: 34, y: 15 }, { x: 35, y: 15 }, { x: 36, y: 15 }, { x: 37, y: 15 }, { x: 38, y: 15 }, { x: 39, y: 15 }, { x: 40, y: 15 }] },

@@ -98,6 +98,18 @@ use, so they come last.
   trumpeter is rigged with a playing motion and the idle preset. Credits left: about 2645.
 - Transfer: exports download to the Mac; one `scp ~/Downloads/<names>*.glb hdx-lab:.../scratch/tripo/`
   per batch brings them over, and `scripts/assets-index.mjs` registers them.
+- Night: all eight remaining people (hearthkeeper, shepherd, stallkeeper, stallkeeper-2, mayor,
+  chorister, chorister-2, doorman) and the bell tower, generated, retopologised, rigged, each with the
+  idle preset and one text motion, exported at 1k textures. Credits left: 1470. What the Studio taught:
+  jobs run in parallel (queue all the generations, then all the retopologies, then all the rigs); a
+  generated motion lands in the AI Animation library and must be applied to its model (click its tile
+  with the model selected) before it appears in the export dialog's animation list; the asset tile is
+  replaced in place by each new version, so tile positions stay put.
+- Installed (2026-11-03 night): all nine files in the game, every person checked in a screenshot in place.
+  Changes from the plan: shepherd and doorman face south (toward the player), chorister-2 moved to
+  (25,5) beside the chorister, bell tower at scale 3.2, and the generator keeps houses south of a
+  person single-storey so the camera sees them. The bell tower is dark slate and grey stone, darker
+  than the town; a regeneration in pale sandstone is the one open question.
 
 ## Budget
 
