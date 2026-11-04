@@ -44,6 +44,9 @@ from another machine. The mic starts on a click.
 - `node scripts/playthrough.mjs [url] [outDir]`: drives the whole game in headless Chrome through
   every door, going quiet and practising on the way, and fails on console errors or silent prompts.
 - `node scripts/smoke.mjs <url>`: boot, Play and the first door on a deployed build.
+- URL shortcuts on any build: `?scene=world&area=jazz&x=36&y=15` starts in front of the Jazz Quarter band
+  after the title, `?open=jazz` (or `?open=all`) counts that area's doors as opened so the whole street
+  can be walked, `?reset=1` clears saved progress, `?ao=on` turns ambient occlusion on.
 - `scripts/deploy.sh`: build, upload to the Railway `game` service, wait for the build and smoke-test the live URL (`--no-smoke` skips the last step).
 - `node scripts/screenshot3d.mjs [url] [outDir] [area] [x] [y]`: boots an area and walks a few
   steps each way, writing screenshots. `node scripts/inspect3d.mjs [url] [area] --eval js --shot f.png`
