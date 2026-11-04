@@ -54,7 +54,7 @@ export class Title {
       });
       box.append(reset);
     }
-    this.root.append(box, el('p', 'title-foot', TOUCH ? 'Tap where you want to walk. Tap a door to listen. Every door can be answered by voice or by the keys on screen.' : 'Walk with the arrow keys or WASD. Press Space at a door to listen. Every door can be answered by voice or by keys.'));
+    this.root.append(box, el('p', 'title-foot', TOUCH ? 'Walk with the stick at the bottom left. At a door, press Listen. Every door can be answered by voice or by the keys on screen.' : 'Walk with the arrow keys or WASD. Press Space at a door to listen. Every door can be answered by voice or by keys.'));
   }
 
   hide(): void {

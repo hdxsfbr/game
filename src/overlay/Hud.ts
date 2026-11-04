@@ -52,7 +52,7 @@ export class Hud {
 
   /** The key hint, and on a touch screen the action button it names instead (none when `action` is empty). */
   setHint(text: string, action = ''): void {
-    if (TOUCH) text = action ? '' : text.replace(/Arrow keys or WASD to walk/, 'Tap where to walk').replace(/\s*M: map$/, '');
+    if (TOUCH) text = action ? '' : text.replace(/Arrow keys or WASD to walk/, 'Push the stick to walk').replace(/\s*M: map$/, '');
     if (this.hint.textContent !== text) this.hint.textContent = text;
     if (this.actionBtn.textContent !== action) this.actionBtn.textContent = action;
     this.actionBtn.classList.toggle('hidden', !action);

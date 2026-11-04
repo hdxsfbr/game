@@ -172,14 +172,15 @@ is the door's celebration for four rounds (about half a minute), and then the qu
 returns. The chord questions and the licks stay synthesised in the puzzle's key. The finale piece takes over once the kingdom's own song and its held chord have
 died away, and runs on under the results, the credits piece after it.
 
-Touch play (2026-11-04, iPad and phones). Walking is a tap on the ground: the singer finds her way
-there over the free tiles, a tap on a door walks up to it and listens, on the bench sits down, on a
-wall or a person goes to the nearest free tile beside it; a small ring marks the tap. The one thing
-Space would do shows as a button bottom right (Listen, Sing it again, Practise), the map has its
-own button, every label drops its key name, the piano answers to a touch at once, Play asks for
-fullscreen where the browser allows it, and the page cannot scroll or zoom. The door panel keeps
-its layout on an iPad, shrinks its keys on a phone held sideways, and stacks on a phone held
-upright with a nudge to turn it sideways. Keyboard play is unchanged.
+Touch play (2026-11-04, iPad and phones). Walking is a joystick at the bottom left: a ring with a
+thumb that follows the finger, the direction and how far it is pushed giving the walk, as a game
+pad would (a first version walked to a tap on the ground; Andre found that unintuitive and hard to
+aim, so it went). The stick hides whenever the singer cannot walk (a door panel, the map, a
+lesson). The one thing Space would do shows as a button bottom right (Listen, Sing it again,
+Practise), the map has its own button, every label drops its key name, the piano answers to a
+touch at once, Play asks for fullscreen where the browser allows it, and the page cannot scroll or
+zoom. The door panel keeps its layout on an iPad, shrinks its keys on a phone held sideways, and
+stacks on a phone held upright with a nudge to turn it sideways. Keyboard play is unchanged.
 
 The bench guide (2026-11-04, for players with no music background). The first time at a bench, a
 guided walkthrough instead of the text pages: a step at a time, narrated in Andre's own voice (a
