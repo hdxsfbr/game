@@ -60,5 +60,5 @@ Build `db4a25d` (main), with the README and docs commits that follow it.
 | Fresh clone | `git clone -b main`, `npm ci`, `npm run build` in an empty directory | 70 packages, builds in 1.2 s, `dist` 126 MB |
 | Full playthrough, dev server | `node scripts/playthrough.mjs https://localhost:5182` (15:30) | every door through `stage-song` solved, errors: none, ok |
 | Deploy smoke | `scripts/deploy.sh` (15:50) | live bundle matches local build, world ready in 960 ms, errors: none |
-| Full playthrough, live URL | `node scripts/playthrough.mjs https://game-production-34da.up.railway.app` | PENDING |
+| Full playthrough, live URL | `node scripts/playthrough.mjs https://game-production-34da.up.railway.app` (16:35) | every door through `stage-song` solved, errors: none, ok (the music checks need the dev build and are skipped on production) |
 | Touch layouts | `scripts/inspect3d.mjs --size 1024x768/844x390/390x844 --touch` | stick hit-tested at its centre, screenshots reviewed |

@@ -283,8 +283,8 @@ await press('KeyM');
 await sleep(400);
 await shot('13-jazz-map');
 // The map: the quarter's piece plays on under it.
-const underMap = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, quiet: window.__lkTracks.paused, synth: window.__lkMusic.trackId }));
-if (underMap.tracks.join() !== 'jazz' || underMap.quiet || underMap.synth) errors.push(`under the map: ${JSON.stringify(underMap)}`);
+const underMap = await page.evaluate(() => (window.__lkTracks ? { tracks: window.__lkTracks.playing, quiet: window.__lkTracks.paused, synth: window.__lkMusic.trackId } : null));
+if (underMap && (underMap.tracks.join() !== 'jazz' || underMap.quiet || underMap.synth)) errors.push(`under the map: ${JSON.stringify(underMap)}`);
 await press('Escape');
 await sleep(900);
 await solveDoor('jazz-club', { wrong: 2, shotName: '14-club' });
@@ -297,8 +297,8 @@ await solveDoor('jazz-bandstand', { wrong: 3, shotName: '16-bandstand', click: t
 // The Band Stand has just opened: the band's cued vamp is the celebration, the recorded piece stepped off.
 // (Checked before the jump, which reloads the page and with it the celebration.)
 await sleep(2500);
-const bandUp = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId }));
-if (bandUp.tracks.length || bandUp.synth !== 'jazz:quiet:band') errors.push(`band celebration: ${JSON.stringify(bandUp)}`);
+const bandUp = await page.evaluate(() => (window.__lkTracks ? { tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId } : null));
+if (bandUp && (bandUp.tracks.length || bandUp.synth !== 'jazz:quiet:band')) errors.push(`band celebration: ${JSON.stringify(bandUp)}`);
 await jump('jazz', 48, 15);
 await solveDoor('jazz-boss', { wrong: 1, shotName: '17-boss' });
 await sleep(1200);
@@ -315,8 +315,8 @@ for (let i = 0; i < 100; i++) { if (await page.evaluate(() => window.__lkResults
 if (!(await page.evaluate(() => window.__lkResults === true))) throw new Error('results screen never appeared');
 await sleep(900);
 await shot('22-results');
-const atResults = await page.evaluate(() => ({ tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId }));
-if (atResults.tracks.join() !== 'finale' || atResults.synth) errors.push(`at the results: ${JSON.stringify(atResults)}`);
+const atResults = await page.evaluate(() => (window.__lkTracks ? { tracks: window.__lkTracks.playing, synth: window.__lkMusic.trackId } : null));
+if (atResults && (atResults.tracks.join() !== 'finale' || atResults.synth)) errors.push(`at the results: ${JSON.stringify(atResults)}`);
 
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();
