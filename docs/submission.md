@@ -42,12 +42,24 @@ every puzzle sound by a Web Audio synth at runtime. Prompts and dates are in `do
 
 ## Deviations and known limits
 
-- The run animation can freeze mid-run on some real devices while the singer keeps moving (seen on a
-  Mac and an iPad on 2026-11-04). Not reproduced headlessly; open.
+- The run animation froze mid-run on a Mac and an iPad on 2026-11-04 while the singer kept moving.
+  Traced on 2026-11-05 to a Babylon blend branch taken when the settled crossfade weights sum to one
+  ulp under 1 (`docs/design.md`, "The legs that froze"); fixed in `3d8d019`, reproduced and checked
+  headlessly with `scripts/legs-repro.mjs`, and confirmed on the Mac.
 - Touch play (joystick, on-screen buttons, phone layouts) landed on 2026-11-04 and has had one evening
   of play on real devices; the desktop is the primary target.
 - Music levels and the narration read were checked by measurement and by machine, not yet by ear.
 - No continuous integration: the checks are the scripts below, run by hand.
+
+## Test results, 2026-11-05
+
+Build `3d8d019` (main), the frozen-legs fix on top of the 2026-11-04 results below.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Unit tests | `npx vitest run` (10:48) | 5 files, 70 tests, 70 passed |
+| Frozen legs, headless | `node scripts/legs-repro.mjs` | before the fix: leg swing 1.07 natural, 0.04 with the Mac's weights forced, joint aliased to the run clip; after: no alias, weights settle at exactly 1 and 0, swing 0.65 either way |
+| Frozen legs, Mac | Andre, Chrome on the Mac against the dev server, several minutes of long runs | no freeze over several minutes of long runs and direction changes (10:55) |
 
 ## Test results, 2026-11-04
 

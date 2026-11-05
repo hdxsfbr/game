@@ -194,6 +194,19 @@ built as rock faces; behind them the ground itself rises into a rolling hillside
 `build_area.py`, from a per-tile distance to open ground), a shade darker than the floor, and the
 land outside the map carries on up. Other areas keep their blocks; `HILL_STYLES` is where to add one.
 
+The legs that froze (found 2026-11-05). On a Mac and an iPad the singer would, after a change of
+direction, keep travelling in her idle pose. Every stage checked out on the device: the keys were
+held, the run clip played at weight 1 with its frames cycling, the skeleton rebuilt its matrices, and
+CPU skinning changed nothing. A sampler on the one joint found the run clip's value for it equal to
+the idle clip's every frame. Two things met: the stride measurement had stepped the run clip with
+`goToFrame`, which Babylon applies by handing each joint the clip's own working value object, so a
+joint's quaternion *was* the run clip's value; and whenever the settled crossfade weights summed to
+one ulp under 1, Babylon's blend took its under-one branch, wrote idle into that shared object first,
+then read it back as the run pose. Where the weights settle depends on the frame time, so the Mac hit
+it and headless never did. Every joint now gets its own copy after the measurement, and a weight
+within 0.001 of its target snaps to exactly 0 or 1 (`Player.ts`). `scripts/legs-repro.mjs` forces the
+Mac's weight pair headlessly and measures the leg swing; it collapsed from 1.07 to 0.04 before the fix.
+
 The bench guide (2026-11-04, for players with no music background). The first time at a bench, a
 guided walkthrough instead of the text pages: a step at a time, narrated in Andre's own voice (a
 Chatterbox clone, default model, from `src/world/narration.json`), the words also shown as a caption,

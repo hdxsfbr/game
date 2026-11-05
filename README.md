@@ -23,9 +23,8 @@ dated test results in `docs/submission.md`.
 4. `src/world/areas.ts`: the five areas as ASCII maps, the single source for collision and scenery.
 5. `src/scenes3d/World.ts`: the game loop, from walking to the finale.
 
-Known limits: the animation can freeze mid-run on some devices while the singer keeps moving;
-the phone layout is new and has had less play than the desktop; the music levels were set by
-measurement more than by ear.
+Known limits: the phone layout is new and has had less play than the desktop; the music levels
+were set by measurement more than by ear.
 
 ## How to play
 
