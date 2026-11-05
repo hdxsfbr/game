@@ -60,6 +60,7 @@ Build `3d8d019` (main), the frozen-legs fix on top of the 2026-11-04 results bel
 | Unit tests | `npx vitest run` (10:48) | 5 files, 70 tests, 70 passed |
 | Frozen legs, headless | `node scripts/legs-repro.mjs` | before the fix: leg swing 1.07 natural, 0.04 with the Mac's weights forced, joint aliased to the run clip; after: no alias, weights settle at exactly 1 and 0, swing 0.65 either way |
 | Frozen legs, Mac | Andre, Chrome on the Mac against the dev server, several minutes of long runs | no freeze over several minutes of long runs and direction changes (10:55) |
+| Demo video | `node scripts/demo.mjs`, `scripts/demo-narration.py`, `scripts/demo-stitch.sh` (11:50) | 3 min 32 s, ten scenes per `docs/demo-script.md`, every door opened by the keys, the game's own sound plus narration; contact sheet and waveforms reviewed, no clipping (peak -2.1 dB) |
 
 ## Test results, 2026-11-04
 

@@ -107,7 +107,7 @@ async function dismissCard() {
 /** Load an area at a tile and enter it with Play; `open` marks earlier areas' doors solved so the kingdom is in the state the script assumes. */
 async function jump(area, x, y, { open = '', card = true } = {}) {
   await page.goto(`${base}/?scene=world&area=${area}&x=${x}&y=${y}${open ? '&open=' + open : ''}`, { waitUntil: 'load' });
-  await page.waitForSelector('#btn-play', { timeout: 10000 });
+  await page.waitForSelector('#btn-play', { timeout: 30000 });
   await page.click('#btn-play');
   await waitFor((st) => st.area === area && st.ready, 30000, 'area ' + area);
   await sleep(600);

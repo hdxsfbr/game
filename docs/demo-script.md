@@ -22,7 +22,7 @@ mode is shown on the title screen and named in the narration.
 | 09 | The Silent Stage | The kingdom's song sung back phrase by phrase, the lights, the fireworks, the results screen | The finale: everything learned, in one song | 45 s |
 | 10 | Closing card | The live link and the repository | Where to play it | 6 s |
 
-Total target: about four minutes; the first cut (2026-11-05) ran 3 min 17 s. `scripts/demo-stitch.sh`
+Total target: about four minutes; the cut of 2026-11-05 runs 3 min 32 s (212 s), 1280x720, H.264 and AAC, 20 MB. `scripts/demo-stitch.sh`
 assembles the cards, clips and narration into `listening-kingdom-demo.mp4`.
 
 ## Narration
