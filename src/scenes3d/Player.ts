@@ -96,6 +96,18 @@ export class Player {
           g.setWeightForAllAnimatables(0);
         }
         move.speedRatio = p.matchStride(scene, move);
+        // matchStride stepped the clip with goToFrame, which Babylon applies by handing each joint the
+        // clip's own working value: from then on the joint's quaternion is the run clip's value object.
+        // Whenever the settled crossfade weights sum to one ulp under 1, Babylon's blend first writes
+        // idle into that shared object and then reads it back as the run pose, so the legs freeze in
+        // the idle pose while she travels. That happened on a Mac and an iPad, never headless, because
+        // the frame time decides where the weights settle. Every joint gets its own copy.
+        for (const t of move.targetedAnimations) {
+          const n = t.target as TransformNode;
+          if (n.rotationQuaternion) n.rotationQuaternion = n.rotationQuaternion.clone();
+          if (n.position) n.position = n.position.clone();
+          if (n.scaling) n.scaling = n.scaling.clone();
+        }
         for (const g of Object.values(p.clips)) g.setWeightForAllAnimatables(0);
         p.clips.idle.setWeightForAllAnimatables(1);
       } else {
@@ -200,7 +212,8 @@ export class Player {
         const g = this.clips[key]!;
         const w = g.animatables[0]?.weight ?? 0;
         const target = key === this.clip ? 1 : 0;
-        if (Math.abs(target - w) > 0.001) g.setWeightForAllAnimatables(w + (target - w) * k);
+        // Settled weights are exactly 0 or 1, so the blend's weights sum to exactly 1 between fades.
+        if (w !== target) g.setWeightForAllAnimatables(Math.abs(target - w) <= 0.001 ? target : w + (target - w) * k);
       }
       if (this.moving) {
         const before = Math.floor(this.phase / Math.PI);
