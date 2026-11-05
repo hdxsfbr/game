@@ -7,6 +7,8 @@ chord qualities, and you sing the kingdom's song back on the Silent Stage.
 
 Play it: https://game-production-34da.up.railway.app
 
+![The Valley of Intervals in colour: the singer by the river, a plank bridge and the gate east](docs/images/valley.jpg)
+
 Built with Babylon.js over a world modelled by headless Blender scripts, a rigged character and
 townsfolk from Tripo, music from Suno, story cards from Stable Diffusion and narration in the
 author's cloned voice. The first version was a 2D game (tag `v1-2d`); `main` is the 3D game.
@@ -27,6 +29,8 @@ Known limits: the phone layout is new and has had less play than the desktop; th
 were set by measurement more than by ear.
 
 ## How to play
+
+![Walking east over the bridge in the Valley](docs/images/walk.gif)
 
 - Walk with the arrow keys or WASD (on a phone or iPad, the stick at the bottom left). Press Space
   at a door to listen (the Listen button on touch), M for the map. The kingdom
@@ -79,6 +83,10 @@ from another machine. The mic starts on a click.
   `node scripts/bootshot.mjs [url]` checks the page's own loader (index.html) on a throttled connection.
   `node scripts/assets-index.mjs` lists the Tripo characters and props present so the game loads them
   (`docs/tripo-brief.md` is the job list with prompts and file names).
+  `node scripts/readme-media.mjs [url] [outDir]` captures this README's pictures: the Valley hero shot
+  and the walking clip, from the page's screencast stream. `node scripts/legs-repro.mjs [url]` forces
+  the crossfade weights that froze the singer's legs on a Mac and measures the leg swing;
+  `scripts/legs-sampler.js` is the console sampler that found that bug (paste it into DevTools on the device).
 - `scripts/blender/build.sh [area ...]`: rebuilds the world glbs (`build_area.py`) and the
   placeholder mannequin (`build_mannequin.py`) with headless Blender; `build_sky.py` renders the
   skies. Blender 4.x is expected at `~/.local/opt/blender/blender` (or `$BLENDER`).
