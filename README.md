@@ -5,17 +5,32 @@ kingdom gone silent and grey. Every door answers only to the right note. Win you
 interval at a time: by the end you can hear intervals, scale degrees in a key, and the four jazz
 chord qualities, and you sing the kingdom's song back on the Silent Stage.
 
-Play it: https://game-production-34da.up.railway.app (the 2D version, tag `v1-2d`).
+Play it: https://game-production-34da.up.railway.app
 
-This branch is the 3D remake: the same kingdom, puzzles, voice and music, rebuilt with
-Babylon.js over a world modelled by headless Blender scripts and a rigged character from Tripo.
+Built with Babylon.js over a world modelled by headless Blender scripts, a rigged character and
+townsfolk from Tripo, music from Suno, story cards from Stable Diffusion and narration in the
+author's cloned voice. The first version was a 2D game (tag `v1-2d`); `main` is the 3D game.
 
 Built for Game Week (brief in `docs/Game_Week_Assignment.pdf`). Design in `docs/design.md`, art and
-asset plan in `docs/art-plan.md`, asset provenance in `docs/assets.md`.
+asset plan in `docs/art-plan.md`, asset provenance in `docs/assets.md`, submission notes and the
+dated test results in `docs/submission.md`.
+
+## Where to look first
+
+1. Play the live link above: Play (keys) if there is no microphone to hand. Fifteen minutes end to end.
+2. `docs/design.md`: what the game is, why each puzzle exists, and a dated log of every design change.
+3. `docs/assets.md`: every picture and sound, how it was generated, with the prompts.
+4. `src/world/areas.ts`: the five areas as ASCII maps, the single source for collision and scenery.
+5. `src/scenes3d/World.ts`: the game loop, from walking to the finale.
+
+Known limits: the animation can freeze mid-run on some devices while the singer keeps moving;
+the phone layout is new and has had less play than the desktop; the music levels were set by
+measurement more than by ear.
 
 ## How to play
 
-- Walk with the arrow keys or WASD. Press Space at a door to listen, M for the map. The kingdom
+- Walk with the arrow keys or WASD (on a phone or iPad, the stick at the bottom left). Press Space
+  at a door to listen (the Listen button on touch), M for the map. The kingdom
   is grey until you open doors; colour spreads out from each one.
 - Answer by **singing** (microphone, headphones recommended) or by **playing**: the piano under
   every door runs from C4 to E5 and never moves. A S D F G H J K are the white keys from C, W E T
@@ -82,7 +97,6 @@ railway up --service game --detach
 ## Layout
 
 - `src/ear/`: pitch math (pure, tested), microphone pitch detector (pitchy, McLeod method), piano keys.
-- Touch play (iPad, phones): a joystick at the bottom left walks the singer (`src/overlay/Joystick.ts`, direction and push give the speed); on-screen Listen, Practise and Map buttons and key-free labels appear on touch screens (`src/overlay/touch.ts`, `?touch=1` forces it); Play asks for fullscreen where the browser allows; the door panel stacks on a phone held upright. `scripts/inspect3d.mjs --size WxH --touch` checks a layout headlessly.
 - `src/overlay/GuideView.ts`, `src/world/guides.ts`, `src/world/narration.json`: the guided walkthrough at each bench for players with no music background: a narrated step at a time in Andre's voice (`public/narration`, made by `scripts/narrate.py` with Chatterbox from the JSON), each followed by its example sounded and lit on a piano. Shown the first time at a bench; G from the pages after that.
 - `src/audio/`: Web Audio engine, ducking, synth, the sequenced area music, and sound effects. Every prompt is generated at runtime, so it follows each puzzle's key. The background music is recorded pieces (`public/music`, made with Suno; `src/audio/tracks.ts`): one per area, low-passed while the area is grey and opening with its colour, stepping aside whenever a door or lesson listens; the title, the story cards, the finale and the credits have theirs. Once the song is given back, the finale piece plays everywhere. The synth music (`src/audio/music.ts`) plays for half a minute after the Band Stand opens, the band's cued vamp as the door's celebration, and is otherwise only the fallback for a missing file. `scripts/musiccheck.mjs` checks the transitions headlessly.
 - `src/world/`: areas and maps (the ASCII maps are the single source for both the collision grid
@@ -97,6 +111,10 @@ railway up --service game --detach
   grey-to-colour plugin is `door-glow`, the strip on every closed door, which the world pulses so a door
   reads from across a grey area.
 - `src/overlay/`: the HTML overlays: title, HUD, puzzle panel with piano and ladder, map, lessons,
-  story cards, results.
+  story cards, results. Touch play (iPad, phones): a joystick at the bottom left walks the singer
+  (`Joystick.ts`, direction and push give the speed); on-screen Listen, Practise and Map buttons and
+  key-free labels appear on touch screens (`touch.ts`, `?touch=1` forces it); Play asks for fullscreen
+  where the browser allows; the door panel stacks on a phone held upright. `scripts/inspect3d.mjs
+  --size WxH --touch` checks a layout headlessly.
 - `public/world/`, `public/sky/`, `public/character/`, `public/cards/`: generated assets, see
   `docs/assets.md`. `scripts/`: generators and headless checks.

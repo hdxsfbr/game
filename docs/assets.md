@@ -4,7 +4,7 @@ Every picture and sound in The Listening Kingdom is generated: either drawn by c
 produced by a generation model from a prompt recorded here, or synthesised in Web Audio. No
 pre-made packs are used. Dates are when the asset in the repo was made.
 
-## Visual (3D version, branch claude/3d-c89b4d)
+## Visual (3D version, `main`)
 
 | Asset | Route | Where | Notes |
 | --- | --- | --- | --- |
@@ -19,7 +19,7 @@ pre-made packs are used. Dates are when the asset in the repo was made.
 | Title backdrop, five area story cards, results backdrop | Local Stable Diffusion XL base 1.0 on an RTX 4090, painted finish at 1536 x 864 | `public/cards/*.jpg`, prompts and seeds in `public/cards/cards.json`, generator `scripts/gen_cards.py` | 2026-11-02. Shared with the 2D version. |
 | HUD, puzzle panel, piano, SVG ladder, chord signs, lessons, map (2D canvas), story cards, title, results | HTML and CSS overlays over the canvas | `src/overlay/*.ts`, `src/overlay/ui.css` | 2026-11-02 |
 
-## Visual (2D version, tag v1-2d on main)
+## Visual (2D version, tag `v1-2d`)
 
 | Asset | Route | Where | Notes |
 | --- | --- | --- | --- |
